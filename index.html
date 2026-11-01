@@ -1,0 +1,1792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
+<title>Highlighter Flashcards</title>
+<style>
+  /* ============================================================
+     DESIGN TOKENS
+     ============================================================ */
+  :root{
+    --bg:            #FAF7F4;
+    --bg-alt:        #F3EDE9;
+    --surface:       #FFFFFF;
+    --surface-sunk:  #F6F0EE;
+    --ink:           #2A2630;
+    --ink-soft:      #6C6470;
+    --line:          #E7DEDA;
+    --rose:          #B76E79;
+    --rose-deep:     #96505C;
+    --rose-tint:     #F1DEE1;
+    --sage:          #8C9A8A;
+    --amber:         #C99A54;
+    --focus:         #6E4B57;
+    --shadow:        0 1px 2px rgba(42,38,48,.04), 0 8px 24px -12px rgba(42,38,48,.18);
+    --radius-lg:     20px;
+    --radius-md:     14px;
+    --radius-sm:     9px;
+    /* A single sans-serif stack used everywhere — headings included — so
+       the typeface is identical on every device regardless of which
+       serif fonts happen to be installed. */
+    --serif:         -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --sans:          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --ease:          cubic-bezier(.22,.61,.36,1);
+
+    /* Type scale — a small, consistent set of sizes reused across the
+       whole interface instead of one-off values per component. */
+    --fs-display:    clamp(1.75rem, 4.2vw, 2.2rem);  /* page-level title (home) */
+    --fs-h2:         1.4rem;                          /* section headers (topic page, completion) */
+    --fs-card:       clamp(1.15rem, 3.2vw, 1.3rem);   /* flashcard question/answer focal text */
+    --fs-title:      1rem;                            /* card/item titles (topic, subtopic, brand) */
+    --fs-body:       .95rem;                          /* buttons, inputs, running text */
+    --fs-meta:       .8rem;                           /* meta lines, labels, pills */
+    --fs-small:      .75rem;                           /* smallest supporting text */
+    --fs-num:        1.4rem;                           /* emphasized numerals (stats, %) */
+  }
+  [data-theme="dark"]{
+    --bg:            #201C22;
+    --bg-alt:        #29242B;
+    --surface:       #2B262E;
+    --surface-sunk:  #221E25;
+    --ink:           #F1EAE6;
+    --ink-soft:      #B8AEB6;
+    --line:          #3D3640;
+    --rose:          #D79BA6;
+    --rose-deep:     #E6B4BE;
+    --rose-tint:     #3A2A30;
+    --sage:          #9FB09C;
+    --amber:         #D8B276;
+    --focus:         #E6B4BE;
+    --shadow:        0 1px 2px rgba(0,0,0,.3), 0 12px 28px -14px rgba(0,0,0,.6);
+  }
+
+  *,*::before,*::after{ box-sizing:border-box; }
+  html{ -webkit-text-size-adjust:100%; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    transition:background .25s var(--ease), color .25s var(--ease);
+    min-height:100vh;
+    overflow-x:hidden;
+    display:flex;
+    flex-direction:column;
+  }
+  h1,h2,h3{ font-family:var(--serif); font-weight:600; margin:0; color:var(--ink); }
+  p{ margin:0; }
+  button{ font-family:inherit; }
+  ::selection{ background:var(--rose-tint); color:var(--ink); }
+
+  :focus-visible{
+    outline:2px solid var(--focus);
+    outline-offset:3px;
+    border-radius:6px;
+  }
+
+  .app{
+    max-width:900px;
+    margin:0 auto;
+    padding:20px 20px 40px;
+    width:100%;
+    flex:1;
+  }
+
+  /* ============================================================
+     TOP BAR
+     ============================================================ */
+  .topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:14px 4px 22px;
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-family:var(--serif);
+    font-size:var(--fs-title);
+    font-weight:700;
+    color:var(--ink);
+    letter-spacing:.2px;
+  }
+  .topbar-actions{ display:flex; align-items:center; gap:8px; }
+
+  .icon-btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:40px; height:40px;
+    border-radius:50%;
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--ink-soft);
+    cursor:pointer;
+    transition:background .18s var(--ease), color .18s var(--ease), transform .12s var(--ease);
+  }
+  .icon-btn:hover{ background:var(--rose-tint); color:var(--rose-deep); }
+  .icon-btn:active{ transform:scale(.94); }
+
+  /* ============================================================
+     SEARCH
+     ============================================================ */
+  .search-wrap{
+    position:relative;
+    margin-bottom:26px;
+  }
+  .search-wrap svg{
+    position:absolute; left:16px; top:50%; transform:translateY(-50%);
+    color:var(--ink-soft); pointer-events:none;
+  }
+  .search-input{
+    width:100%;
+    padding:13px 16px 13px 44px;
+    border-radius:var(--radius-md);
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--ink);
+    font-size:var(--fs-body);
+    transition:border-color .18s var(--ease), box-shadow .18s var(--ease);
+  }
+  .search-input::placeholder{ color:var(--ink-soft); }
+  .search-input:focus{
+    border-color:var(--rose);
+    box-shadow:0 0 0 3px var(--rose-tint);
+    outline:none;
+  }
+  .search-results{
+    margin-top:10px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .search-hit{
+    text-align:left;
+    padding:12px 14px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius-sm);
+    cursor:pointer;
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+  }
+  .search-hit:hover{ border-color:var(--rose); }
+  .search-hit .hit-path{ font-size:var(--fs-small); color:var(--ink-soft); }
+  .search-hit .hit-main{ font-size:var(--fs-body); color:var(--ink); }
+  .search-empty{ color:var(--ink-soft); font-size:var(--fs-body); padding:8px 4px; }
+
+  /* ============================================================
+     VIEW SWITCHING
+     ============================================================ */
+  .view{ display:none; animation:viewIn .32s var(--ease); }
+  .view.active{ display:block; }
+  @keyframes viewIn{
+    from{ opacity:0; transform:translateY(6px); }
+    to{ opacity:1; transform:translateY(0); }
+  }
+
+  .crumb{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:18px;
+  }
+  .back-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    background:none;
+    border:none;
+    color:var(--rose-deep);
+    font-size:var(--fs-meta);
+    cursor:pointer;
+    padding:8px 6px 8px 0;
+    border-radius:6px;
+  }
+  .back-btn:hover{ text-decoration:underline; }
+
+  /* ============================================================
+     HOME / DASHBOARD
+     ============================================================ */
+  .hero{
+    padding:8px 4px 28px;
+    border-bottom:1px solid var(--line);
+    margin-bottom:28px;
+  }
+  .hero h1{
+    font-size:var(--fs-display);
+    line-height:1.1;
+  }
+  .hero .sub{
+    margin-top:10px;
+    color:var(--ink-soft);
+    font-size:var(--fs-body);
+    max-width:46ch;
+  }
+
+  .progress-panel{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius-lg);
+    padding:20px 22px;
+    margin-bottom:30px;
+    box-shadow:var(--shadow);
+  }
+  .progress-panel-head{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    margin-bottom:14px;
+  }
+  .progress-panel-head h2{ font-size:var(--fs-title); }
+  .progress-pct{
+    font-family:var(--serif);
+    font-size:var(--fs-num);
+    color:var(--rose-deep);
+  }
+  .bar-track{
+    height:8px;
+    border-radius:99px;
+    background:var(--bg-alt);
+    overflow:hidden;
+    margin-bottom:16px;
+  }
+  .bar-fill{
+    height:100%;
+    border-radius:99px;
+    background:linear-gradient(90deg, var(--rose), var(--rose-deep));
+    transition:width .5s var(--ease);
+  }
+  .stat-row{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:12px;
+  }
+  .stat{
+    text-align:center;
+    padding:10px 6px;
+    border-radius:var(--radius-sm);
+    background:var(--surface-sunk);
+  }
+  .stat-num{ font-family:var(--serif); font-size:var(--fs-num); color:var(--ink); }
+  .stat-label{ font-size:var(--fs-small); color:var(--ink-soft); margin-top:2px; }
+
+  .section-label{
+    font-size:var(--fs-meta);
+    color:var(--ink-soft);
+    margin:0 0 14px 2px;
+  }
+
+  .topic-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(240px,1fr));
+    gap:14px;
+  }
+  .topic-card, .sub-card{
+    text-align:left;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius-md);
+    padding:18px 18px 16px;
+    cursor:pointer;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    box-shadow:var(--shadow);
+    transition:transform .18s var(--ease), border-color .18s var(--ease);
+  }
+  .topic-card:hover, .sub-card:hover{
+    transform:translateY(-2px);
+    border-color:var(--rose);
+  }
+  .topic-name{ font-family:var(--serif); font-size:var(--fs-title); font-weight:700; color:var(--ink); }
+
+  /* Fixed, consistent gap between the "completed" status and the card
+     count — a constant gap rather than a stretchy space-between, so the
+     distance between the two values never grows or shrinks with card width. */
+  .topic-meta{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    font-size:var(--fs-meta);
+    color:var(--ink-soft);
+  }
+  .topic-meta .meta-pct{ color:var(--rose-deep); font-weight:600; }
+  .topic-meta .meta-done{ color:var(--sage); font-weight:600; }
+
+  .mini-track{
+    height:5px; border-radius:99px; background:var(--bg-alt); overflow:hidden; margin-top:2px;
+  }
+  .mini-fill{ height:100%; background:var(--rose); border-radius:99px; transition:width .4s var(--ease); }
+
+  /* ============================================================
+     TOPIC / SUBTOPIC VIEW
+     ============================================================ */
+  .topic-header{ margin-bottom:22px; }
+  .topic-header h2{ font-size:var(--fs-h2); }
+  .topic-header .sub{ color:var(--ink-soft); margin-top:6px; font-size:var(--fs-body); }
+
+  .sub-list{ display:flex; flex-direction:column; gap:10px; }
+  .sub-card-name{ font-family:var(--serif); font-size:var(--fs-title); font-weight:700; color:var(--ink); }
+
+  /* ============================================================
+     FLASHCARD VIEW
+     ============================================================ */
+  .study-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:10px;
+    gap:12px;
+  }
+  .study-title{ font-size:var(--fs-meta); color:var(--ink-soft); }
+  .study-title strong{ color:var(--ink); font-weight:700; }
+  .counter-pill{
+    font-size:var(--fs-meta);
+    color:var(--rose-deep);
+    background:var(--rose-tint);
+    padding:4px 12px;
+    border-radius:99px;
+    white-space:nowrap;
+  }
+  .study-bar-track{
+    height:6px; border-radius:99px; background:var(--bg-alt); overflow:hidden; margin-bottom:26px;
+  }
+  .study-bar-fill{ height:100%; background:var(--rose); border-radius:99px; transition:width .35s var(--ease); }
+
+  .card-stage{
+    perspective:1400px;
+    margin-bottom:22px;
+  }
+  .flashcard{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius-lg);
+    box-shadow:var(--shadow);
+    padding:38px 30px;
+    min-height:280px;
+    display:flex;
+    flex-direction:column;
+    animation:cardIn .28s var(--ease);
+  }
+  @keyframes cardIn{
+    from{ opacity:0; transform:translateX(10px); }
+    to{ opacity:1; transform:translateX(0); }
+  }
+  .card-face-label{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    font-size:.95rem;
+    letter-spacing:.03em;
+    color:var(--rose-deep);
+    margin-bottom:16px;
+    font-weight:600;
+  }
+  .card-face-label.answer{ color:var(--sage); }
+  .card-face-label .dot{
+    width:8px; height:8px; border-radius:50%; background:currentColor;
+  }
+  .card-text{
+    font-family:var(--serif);
+    font-size:var(--fs-card);
+    line-height:1.5;
+    color:var(--ink);
+    flex:1;
+  }
+  .answer-block{
+    margin-top:22px;
+    padding-top:20px;
+    border-top:1px dashed var(--line);
+    display:none;
+  }
+  .answer-block.shown{ display:block; animation:answerIn .3s var(--ease); }
+  @keyframes answerIn{
+    from{ opacity:0; transform:translateY(4px); }
+    to{ opacity:1; transform:translateY(0); }
+  }
+  .answer-text{
+    font-family:var(--serif);
+    font-size:var(--fs-card);
+    line-height:1.5;
+    color:var(--ink);
+  }
+
+  .card-actions{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .btn{
+    border:none;
+    border-radius:var(--radius-sm);
+    padding:14px 20px;
+    font-size:var(--fs-body);
+    font-weight:600;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    transition:transform .12s var(--ease), background .18s var(--ease), box-shadow .18s var(--ease);
+    min-height:48px;
+  }
+  .btn:active{ transform:scale(.98); }
+  .btn-primary{
+    background:var(--rose-deep);
+    color:#fff;
+  }
+  .btn-primary:hover{ background:var(--rose); }
+  .btn-outline{
+    background:var(--surface);
+    color:var(--ink);
+    border:1px solid var(--line);
+  }
+  .btn-outline:hover{ border-color:var(--rose); color:var(--rose-deep); }
+
+  .judge-row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .judge-row #markKnownBtn{ order:2; }
+  .judge-row #markReviewBtn{ order:1; }
+  .btn-known{
+    background:var(--surface);
+    border:1px solid var(--sage);
+    color:var(--sage);
+  }
+  .btn-known:hover{ background:color-mix(in srgb, var(--sage) 14%, var(--surface)); }
+  .btn-review{
+    background:var(--surface);
+    border:1px solid var(--amber);
+    color:var(--amber);
+  }
+  .btn-review:hover{ background:color-mix(in srgb, var(--amber) 14%, var(--surface)); }
+  .btn-known.active{ background:var(--sage); color:#fff; }
+  .btn-review.active{ background:var(--amber); color:#fff; }
+
+  .nav-row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
+  .btn-disabled{ opacity:.4; cursor:not-allowed; }
+
+  /* ============================================================
+     COMPLETION SCREEN
+     ============================================================ */
+  .complete-card{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius-lg);
+    box-shadow:var(--shadow);
+    padding:40px 28px;
+    text-align:center;
+  }
+  .complete-badge{
+    width:64px; height:64px;
+    border-radius:50%;
+    background:var(--rose-tint);
+    color:var(--rose-deep);
+    display:flex; align-items:center; justify-content:center;
+    margin:0 auto 18px;
+    font-family:var(--serif);
+    font-size:var(--fs-num);
+  }
+  .complete-card h2{ font-size:var(--fs-h2); margin-bottom:8px; }
+  .complete-card .sub{ color:var(--ink-soft); margin-bottom:26px; font-size:var(--fs-body); }
+  .complete-stats{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:10px;
+    margin-bottom:28px;
+  }
+  .complete-actions{ display:flex; flex-direction:column; gap:10px; }
+
+  /* ============================================================
+     HISTORY (cards needing review)
+     ============================================================ */
+  .history-btn-wrap{ margin-top:22px; }
+  .history-list{ display:flex; flex-direction:column; gap:10px; }
+  .history-item{
+    text-align:left;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius-md);
+    padding:16px 18px;
+    cursor:pointer;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    box-shadow:var(--shadow);
+    transition:transform .18s var(--ease), border-color .18s var(--ease);
+  }
+  .history-item:hover{ transform:translateY(-2px); border-color:var(--amber); }
+  .history-item .hist-path{ font-size:var(--fs-small); color:var(--ink-soft); }
+  .history-item .hist-q{ font-size:var(--fs-body); color:var(--ink); line-height:1.4; }
+  .history-empty{
+    color:var(--ink-soft);
+    font-size:var(--fs-body);
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius-md);
+    padding:24px 18px;
+    text-align:center;
+  }
+
+  /* ============================================================
+     FOOTER
+     ============================================================ */
+  .site-footer{
+    margin-top:auto;
+    padding:26px 20px 30px;
+    text-align:center;
+    border-top:1px solid var(--line);
+  }
+  .site-footer p{
+    font-size:var(--fs-meta);
+    color:var(--ink-soft);
+  }
+
+  /* ============================================================
+     RESPONSIVE
+     ============================================================ */
+  @media (min-width: 640px){
+    .app{ padding:28px 32px 40px; }
+    .judge-row, .nav-row{ grid-template-columns:1fr 1fr; }
+    .card-actions{ flex-direction:column; }
+    .flashcard{ padding:48px 44px; min-height:320px; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:.001ms !important; transition-duration:.001ms !important; }
+  }
+
+  .sr-only{
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+    overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+  }
+</style>
+</head>
+<body>
+
+<noscript>
+  <div style="margin:16px;padding:14px 16px;border:1px solid #C99A54;border-radius:12px;background:#FFF7E8;color:#2A2630;font-family:sans-serif;line-height:1.6;">
+    JavaScript is disabled or blocked in this viewer, so the flashcards cannot load.
+    Please open this file in Chrome or Safari (save it to your phone, then open it with the browser).
+  </div>
+</noscript>
+<div id="errorBanner" style="display:none;margin:16px;padding:14px 16px;border:1px solid #C99A54;border-radius:12px;background:#FFF7E8;color:#2A2630;font-family:sans-serif;line-height:1.6;"></div>
+<div class="app">
+
+  <!-- ============ TOP BAR ============ -->
+  <div class="topbar">
+    <div class="brand">
+      <span>Highlighter Flashcards</span>
+    </div>
+    <div class="topbar-actions">
+      <button class="icon-btn" id="themeToggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
+        <svg id="themeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ============ HOME VIEW ============ -->
+  <section class="view active" id="view-home" aria-labelledby="homeTitle">
+
+    <div class="hero">
+      <h1 id="homeTitle">Respiratory System</h1>
+      <p class="sub">Test your knowledge and strengthen your understanding through active recall.</p>
+    </div>
+
+    <div class="search-wrap">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/>
+        <path d="M21 21L16.65 16.65" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      <input type="search" class="search-input" id="searchInput" placeholder="Search topics, subtopics, or flashcards…" aria-label="Search flashcards">
+      <div class="search-results" id="searchResults" role="listbox" aria-label="Search results"></div>
+    </div>
+
+    <div class="progress-panel">
+      <div class="progress-panel-head">
+        <h2>Your Progress</h2>
+        <span class="progress-pct" id="overallPct">0%</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill" id="overallBar" style="width:0%"></div></div>
+      <div class="stat-row">
+        <div class="stat"><div class="stat-num" id="statTopicsDone">0</div><div class="stat-label">Topics completed</div></div>
+        <div class="stat"><div class="stat-num" id="statReviewed">0</div><div class="stat-label">Cards reviewed</div></div>
+        <div class="stat"><div class="stat-num" id="statNeedReview">0</div><div class="stat-label">Need review</div></div>
+      </div>
+    </div>
+
+    <p class="section-label">Topics</p>
+    <div class="topic-grid" id="topicGrid"></div>
+
+    <div class="history-btn-wrap">
+      <button class="btn btn-outline" id="viewHistoryBtn" type="button" style="width:100%;">View History — Cards Needing Review</button>
+    </div>
+  </section>
+
+  <!-- ============ TOPIC VIEW (subtopics) ============ -->
+  <section class="view" id="view-topic" aria-labelledby="topicTitle">
+    <div class="crumb">
+      <button class="back-btn" id="backToHome" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Back to topics
+      </button>
+    </div>
+    <div class="topic-header">
+      <h2 id="topicTitle">Topic</h2>
+      <p class="sub" id="topicSub"></p>
+    </div>
+    <p class="section-label">Subtopics</p>
+    <div class="sub-list" id="subList"></div>
+  </section>
+
+  <!-- ============ STUDY VIEW (flashcards) ============ -->
+  <section class="view" id="view-study" aria-labelledby="studySubtitle">
+    <div class="crumb">
+      <button class="back-btn" id="backToTopic" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Back
+      </button>
+    </div>
+
+    <div class="study-head">
+      <div class="study-title">Studying <strong id="studySubtitle">Subtopic</strong></div>
+      <div class="counter-pill" id="cardCounter">Card 1 of 1</div>
+    </div>
+    <div class="study-bar-track"><div class="study-bar-fill" id="studyBar" style="width:0%"></div></div>
+
+    <div class="card-stage">
+      <div class="flashcard" id="flashcard">
+        <span class="card-face-label"><span class="dot"></span>Question</span>
+        <div class="card-text" id="questionText">—</div>
+        <div class="answer-block" id="answerBlock">
+          <span class="card-face-label answer"><span class="dot"></span>Answer</span>
+          <div class="answer-text" id="answerText">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-actions">
+      <button class="btn btn-primary" id="showAnswerBtn" type="button" style="width:100%;">Show Answer</button>
+
+      <div class="judge-row" id="judgeRow" style="display:none;">
+        <button class="btn btn-known" id="markKnownBtn" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 6L9 17L4 12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Known
+        </button>
+        <button class="btn btn-review" id="markReviewBtn" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8V13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16.2" r="1" fill="currentColor"/><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/></svg>
+          Needs Review
+        </button>
+      </div>
+
+      <div class="nav-row" id="navRow" style="display:none;">
+        <button class="btn btn-outline" id="prevBtn" type="button">Previous</button>
+        <button class="btn btn-outline" id="nextBtn" type="button">Next</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ HISTORY VIEW (cards needing review) ============ -->
+  <section class="view" id="view-history" aria-labelledby="historyTitle">
+    <div class="crumb">
+      <button class="back-btn" id="backToHomeFromHistory" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Back to topics
+      </button>
+    </div>
+    <div class="topic-header">
+      <h2 id="historyTitle">Cards Needing Review</h2>
+      <p class="sub" id="historySub"></p>
+    </div>
+    <div class="history-list" id="historyList"></div>
+  </section>
+
+  <!-- ============ COMPLETION VIEW ============ -->
+  <section class="view" id="view-complete" aria-labelledby="completeTitle">
+    <div class="complete-card">
+      <div class="complete-badge">✓</div>
+      <h2 id="completeTitle">Topic Completed</h2>
+      <p class="sub" id="completeSub">Nice work — here's how it went.</p>
+      <div class="complete-stats">
+        <div class="stat"><div class="stat-num" id="cReviewed">0</div><div class="stat-label">Reviewed</div></div>
+        <div class="stat"><div class="stat-num" id="cKnown">0</div><div class="stat-label">Known</div></div>
+        <div class="stat"><div class="stat-num" id="cReview">0</div><div class="stat-label">Need review</div></div>
+      </div>
+      <div class="bar-track" style="margin-bottom:24px;"><div class="bar-fill" id="completePct" style="width:0%"></div></div>
+      <div class="complete-actions">
+        <button class="btn btn-primary" id="reviewAgainBtn" type="button">Review Again</button>
+        <button class="btn btn-outline" id="backToTopicsBtn" type="button">Back to Topics</button>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<footer class="site-footer">
+  <p>© 2026 Highlighter Flashcards. All rights reserved.</p>
+  <p id="storageNote" style="display:none; margin-top:8px; color:var(--amber);">Your browser is blocking storage here, so progress and your last card are kept only until this tab is closed. Open the file in a regular browser (Chrome / Safari) to save them permanently.</p>
+</footer>
+
+<script>
+window.addEventListener("error", function(e){
+  var b = document.getElementById("errorBanner");
+  if(b){
+    b.style.display = "block";
+    b.textContent = "Something went wrong loading the flashcards: " + (e && e.message ? e.message : "unknown error") +
+      ". Please open this file in an up-to-date Chrome or Safari.";
+  }
+});
+(function(){
+  "use strict";
+
+  /* ============================================================
+     1. DATA — system → topics → subtopics → flashcards
+     ============================================================ */
+  const DATA = {
+    system: "Respiratory System",
+    topics: [
+      {
+        id: "urti",
+        name: "Upper Respiratory Tract Infections",
+        subtopics: [
+          {
+            id: "common-cold",
+            name: "Common Cold",
+            cards: [
+              { id: 101, question: "What is the most common infection of childhood?", answer: "The common cold." },
+              { id: 102, question: "What is the most common cause of the common cold?", answer: "Rhinoviruses are the most common pathogens causing the common cold." },
+              { id: 103, question: "What other viruses can cause the common cold?", answer: "Coronaviruses and respiratory syncytial virus (RSV), among others." },
+              { id: 104, question: "How is the common cold mainly transmitted?", answer: "By droplet infection." },
+              { id: 105, question: "What are the typical clinical features of the common cold?", answer: "Fever, nasal discharge, nasal obstruction, irritability, and sometimes enlarged cervical lymph nodes." },
+              { id: 106, question: "Why can a common cold cause significant respiratory difficulty in young infants?", answer: "Nasopharyngeal congestion causes nasal obstruction and respiratory distress, which is more pronounced in young infants." },
+              { id: 107, question: "Why can common cold cause feeding difficulty in infants?", answer: "Nasal obstruction interferes with breathing during feeding." },
+              { id: 108, question: "What causes the dry hacking cough associated with the common cold?", answer: "Airway narrowing and pharyngeal irritation." },
+              { id: 109, question: "Does purulent nasal discharge necessarily indicate a secondary bacterial infection?", answer: "No. It may result from shedding of epithelial and inflammatory cells during the viral infection." },
+              { id: 110, question: "How long does the common cold usually last?", answer: "It usually lasts about 3 days but may persist for up to 2 weeks." },
+              { id: 111, question: "How long may cough persist after a common cold?", answer: "Cough may persist for up to 4 weeks." },
+              { id: 112, question: "What is the treatment of the common cold?", answer: "Symptomatic treatment, including saline nasal drops for nasal congestion and analgesics when needed." },
+              { id: 113, question: "Are antibiotics indicated for uncomplicated common cold?", answer: "No. Antibiotics provide no benefit because the common cold is viral." },
+              { id: 114, question: "What are important complications of the common cold?", answer: "Otitis media, sinusitis, laryngitis, bronchiolitis, asthma exacerbation, and bronchopneumonia." }
+            ]
+          },
+          {
+            id: "tonsillopharyngitis",
+            name: "Acute Tonsillopharyngitis",
+            cards: [
+              { id: 201, question: "What is the usual cause of acute pharyngitis in children?", answer: "Viral infection." },
+              { id: 202, question: "Which viruses commonly cause acute pharyngitis?", answer: "Adenovirus, enterovirus, and rhinovirus." },
+              { id: 203, question: "What is tonsillitis?", answer: "Tonsillitis is a form of pharyngitis causing intense inflammation of the tonsils, often with purulent exudate." },
+              { id: 204, question: "What is the most important bacterial cause of acute tonsillopharyngitis?", answer: "Group A beta-haemolytic Streptococcus." },
+              { id: 205, question: "What proportion of tonsillitis cases are caused by bacteria?", answer: "Less than one-third of cases." },
+              { id: 206, question: "Can viral and bacterial tonsillitis be reliably distinguished clinically?", answer: "No. Clinical features alone cannot reliably distinguish viral from bacterial causes." },
+              { id: 207, question: "What clinical features are more commonly associated with bacterial tonsillitis?", answer: "Marked constitutional disturbance such as headache, apathy, and abdominal pain." },
+              { id: 208, question: "What complication can result from the toxin produced by group A beta-haemolytic Streptococcus?", answer: "Scarlet fever." },
+              { id: 209, question: "What is the recommended treatment duration for streptococcal tonsillitis when antibiotics are indicated?", answer: "Oral antibiotics are given for 10 days." },
+              { id: 210, question: "Which antibiotics are used for streptococcal tonsillitis?", answer: "Penicillin V, erythromycin, amoxicillin." },
+              { id: 211, question: "Why should amoxicillin be avoided when infectious mononucleosis is suspected?", answer: "It may cause a widespread maculopapular rash." },
+              { id: 212, question: "When may hospital admission be required in acute tonsillitis?", answer: "When the child is unable to swallow solids or liquids and requires intravenous fluids and analgesia." },
+              { id: 213, question: "What are important complications or associated conditions that may lead to tonsillectomy/adenoidectomy?", answer: "Recurrent tonsillitis, peritonsillar abscess, and sleep-disordered breathing." }
+            ]
+          },
+          {
+            id: "acute-otitis-media",
+            name: "Acute Otitis Media",
+            cards: [
+              { id: 301, question: "Why are young children particularly susceptible to acute otitis media?", answer: "Their Eustachian tubes are shorter, more horizontal, and function poorly." },
+              { id: 302, question: "At what age is acute otitis media most common?", answer: "6–12 months." },
+              { id: 303, question: "What are the common bacterial pathogens of acute otitis media?", answer: "Streptococcus pneumoniae, Haemophilus influenzae, and Moraxella catarrhalis." },
+              { id: 304, question: "Which respiratory viruses may be associated with acute otitis media?", answer: "RSV and rhinovirus." },
+              { id: 305, question: "What are the typical presenting symptoms of acute otitis media?", answer: "Earache and fever; infants may present with ear tugging or crying." },
+              { id: 306, question: "What is the characteristic otoscopic appearance of acute otitis media?", answer: "A bright red, bulging tympanic membrane with loss of normal light reflection." },
+              { id: 307, question: "What otoscopic finding may occur if the tympanic membrane perforates?", answer: "Pus may be visible in the external auditory canal." },
+              { id: 308, question: "What three features make the diagnosis of acute otitis media?", answer: "Rapid onset, middle-ear effusion, and signs or symptoms of middle-ear inflammation." },
+              { id: 309, question: "What is the first-line antibiotic for acute otitis media?", answer: "Amoxicillin." },
+              { id: 310, question: "What dose of amoxicillin may be considered where pneumococcal resistance is endemic?", answer: "80–90 mg/kg/day." },
+              { id: 311, question: "Does acute otitis media usually resolve spontaneously?", answer: "Yes. It usually resolves spontaneously, although antibiotics may be recommended in selected cases." },
+              { id: 312, question: "What is the main benefit of antibiotics in acute otitis media?", answer: "They marginally shorten the duration of pain." },
+              { id: 313, question: "Do antibiotics reduce the risk of hearing loss in acute otitis media?", answer: "They have not been shown to reduce the risk of hearing loss." },
+              { id: 314, question: "What serious complications can occur with acute otitis media?", answer: "Mastoiditis and meningitis, although these are rare." },
+              { id: 315, question: "What defines recurrent acute otitis media?", answer: "Four episodes in 6 months or six episodes in 12 months." },
+              { id: 316, question: "What intervention may be considered for recurrent acute otitis media?", answer: "Tympanostomy tube insertion." },
+              { id: 317, question: "What may be considered if a child requires a second set of tympanostomy tubes?", answer: "Concurrent adenoidectomy may be considered." }
+            ]
+          },
+          {
+            id: "otitis-media-effusion",
+            name: "Otitis Media with Effusion",
+            cards: [
+              { id: 401, question: "What is otitis media with effusion (OME)?", answer: "Persistent middle-ear effusion without the acute inflammatory features of acute otitis media." },
+              { id: 402, question: "What are the usual symptoms of OME?", answer: "It is often asymptomatic, but decreased hearing and ear fullness may occur; otalgia is usually absent." },
+              { id: 403, question: "What is the characteristic otoscopic appearance of OME?", answer: "A dull, retracted tympanic membrane with middle-ear effusion, often showing an air-fluid level or bubbles." },
+              { id: 404, question: "What findings confirm OME?", answer: "Reduced tympanic membrane mobility on pneumatic otoscopy or a type B pattern on tympanometry." },
+              { id: 405, question: "At what age is OME particularly common?", answer: "Between 2 and 7 years." },
+              { id: 406, question: "What is the initial approach to a newly diagnosed OME?", answer: "Observation for about 3 months." },
+              { id: 407, question: "Are antibiotics recommended to resolve OME?", answer: "No. Antibiotics have not been shown to resolve OME." },
+              { id: 408, question: "Are antihistamines and decongestants recommended for OME?", answer: "No." },
+              { id: 409, question: "What hearing loss may lead to consideration of tympanostomy tubes if OME persists beyond 3 months?", answer: "Hearing loss greater than 25 dB." },
+              { id: 410, question: "What other indications may support tympanostomy tube insertion in OME?", answer: "Speech delay, altered behavior, or major sequelae such as otitic meningitis or impending cholesteatoma." },
+              { id: 411, question: "What surgical options may be considered for persistent symptomatic OME?", answer: "Tympanostomy tubes, with or without adenoid removal." }
+            ]
+          },
+          {
+            id: "sinusitis",
+            name: "Sinusitis",
+            cards: [
+              { id: 501, question: "When should sinusitis be suspected in a child with a preceding upper respiratory infection?", answer: "When cold symptoms fail to resolve or worsen after 7–10 days." },
+              { id: 502, question: "What are the most common bacterial isolates in acute sinusitis?", answer: "Streptococcus pneumoniae, Haemophilus influenzae, and Moraxella catarrhalis." },
+              { id: 503, question: "What clinical pattern is typical of acute rhinosinusitis?", answer: "Worsening nasal discharge and cough about 7–10 days after the onset of an upper respiratory infection." },
+              { id: 504, question: "What severe clinical presentation also meets the diagnostic criteria for acute sinusitis?", answer: "Fever above 38.5°C with purulent rhinorrhea in a severe URI." },
+              { id: 505, question: "Which sinus commonly produces cheek pain, swelling, and tenderness when infected?", answer: "The maxillary sinus." },
+              { id: 506, question: "When does chronic sinusitis begin to be considered?", answer: "When sinusitis symptoms persist for more than 30 days." },
+              { id: 507, question: "Is imaging routinely required for uncomplicated acute sinusitis?", answer: "No. Imaging is reserved for complications or cases being considered for surgery." },
+              { id: 508, question: "Which imaging modality is superior for evaluating the paranasal sinuses?", answer: "CT scan." },
+              { id: 509, question: "What is the most common source of orbital complications of sinusitis?", answer: "Direct extension from the ethmoid sinuses." },
+              { id: 510, question: "What is the early orbital complication of sinusitis?", answer: "Periorbital (preseptal) cellulitis." },
+              { id: 511, question: "What are important severe orbital complications of sinusitis?", answer: "Orbital abscess and cavernous sinus thrombosis." },
+              { id: 512, question: "Which findings suggest life-threatening cavernous sinus infection?", answer: "Ophthalmoplegia, vision loss, and toxemia." },
+              { id: 513, question: "What intracranial complications can occur with sinusitis?", answer: "Meningitis and intracranial abscesses." },
+              { id: 514, question: "Which sinus infections are more commonly associated with intracranial complications?", answer: "Frontal and sphenoid sinus infections." },
+              { id: 515, question: "What antibiotic is recommended for acute sinusitis?", answer: "Amoxicillin for 10–14 days." },
+              { id: 516, question: "When are parenteral antibiotics necessary in sinusitis?", answer: "When orbital or intracranial complications are present." },
+              { id: 517, question: "Why are antihistamines avoided in sinusitis?", answer: "Their drying effect may impair drainage." }
+            ]
+          },
+          {
+            id: "adenoid",
+            name: "Adenoid Disorders",
+            cards: [
+              { id: 601, question: "What is the most common nasopharyngeal cause of chronic mouth breathing in children?", answer: "Adenoid hypertrophy." },
+              { id: 602, question: "In which children should adenoid enlargement be suspected?", answer: "Usually children older than 2 years with nasal blockage, mouth breathing, sleep disturbance, and chronic nasal discharge." },
+              { id: 603, question: "What nasal conditions should be excluded when evaluating suspected adenoid hypertrophy?", answer: "Septal deviation and nasal polyposis." },
+              { id: 604, question: "How is adenoid hypertrophy confirmed?", answer: "By CT scan or X-ray." },
+              { id: 605, question: "What is the recommended treatment for symptomatic adenoid hypertrophy in younger children?", answer: "Adenoidectomy." },
+              { id: 606, question: "What happens to adenoid size as children grow older?", answer: "Adenoids gradually regress, with pubertal midface growth also helping relieve obstruction." },
+              { id: 607, question: "At what age does adenoid-related nasal obstruction often improve naturally?", answer: "In children older than 9 years." },
+              { id: 608, question: "What is the relationship between adenoid hypertrophy and otitis media?", answer: "The adenoids can contribute to Eustachian tube dysfunction and may act as a bacterial reservoir." },
+              { id: 609, question: "What is the most common cause of pediatric obstructive sleep apnea?", answer: "Adenotonsillar hypertrophy." }
+            ]
+          }
+        ]
+      },
+      {
+        id: "lrti",
+        name: "Lower Respiratory Tract Infections",
+        subtopics: [
+          {
+            id: "bronchiolitis",
+            name: "Bronchiolitis",
+            cards: [
+              { id: 701, question: "How is acute bronchiolitis defined?", answer: "Viral lower respiratory tract infection of infants (<2 yrs) with inflammation of small airways, presenting as a first episode of wheeze preceded by URTI symptoms." },
+              { id: 702, question: "What is the most common cause of acute bronchiolitis?", answer: "RSV (~80%). Others: rhinovirus (second), hMPV, parainfluenza, influenza, adenovirus, bocavirus." },
+              { id: 703, question: "What are the characteristics of RSV?", answer: "Types A and B, highly contagious, incubation 2–6 days." },
+              { id: 704, question: "Which viral co-infection increases the severity of bronchiolitis?", answer: "RSV plus human metapneumovirus." },
+              { id: 705, question: "What are the peak age and season of bronchiolitis?", answer: "2–6 months (~90% of cases at 1–9 months); winter to early spring; slightly more common in males." },
+              { id: 706, question: "Which host factors protect against severe RSV infection?", answer: "Maternal IgG3 (short half-life, limited placental transfer) and breast milk secretory IgA." },
+              { id: 707, question: "What are the risk factors for severe bronchiolitis?", answer: "Prematurity (<35 wk), age <12 weeks, BPD/chronic lung disease, hemodynamically significant CHD, immunodeficiency, neuromuscular disease; also smoke exposure, daycare, lack of breastfeeding." },
+              { id: 708, question: "What are the key pathological changes in bronchiolitis?", answer: "Epithelial necrosis, peribronchiolar lymphocytic infiltration, submucosal edema, and mucus plugging lead to airway obstruction, air trapping, atelectasis, and V/Q mismatch, causing hypoxemia." },
+              { id: 709, question: "Why does mild bronchiolar edema cause marked airway obstruction?", answer: "Airway resistance is inversely proportional to the fourth power of the radius (r⁴)." },
+              { id: 710, question: "What is the difference between partial and complete bronchiolar obstruction?", answer: "Partial obstruction causes air trapping and hyperinflation. Complete obstruction causes atelectasis." },
+              { id: 711, question: "What are the gas exchange consequences of bronchiolitis?", answer: "Hypoxemia; in severe cases CO₂ retention and respiratory acidosis." },
+              { id: 712, question: "How does pseudohepatomegaly occur in bronchiolitis?", answer: "Hyperinflated lungs push the diaphragm down, so a normal-sized liver (and spleen) becomes palpable." },
+              { id: 713, question: "What is the typical clinical course of bronchiolitis?", answer: "Days 1–2: coryza, low-grade fever. Days 3–5: tachypnea, wheeze, crackles, retractions, nasal flaring. Peaks day 3–5; cough may persist up to 3 weeks." },
+              { id: 714, question: "What are the characteristic chest findings in bronchiolitis?", answer: "Diffuse expiratory wheeze and fine end-inspiratory crackles with prolonged expiration." },
+              { id: 715, question: "Which other signs reflect air trapping in bronchiolitis?", answer: "Hyperresonant percussion and barrel chest." },
+              { id: 716, question: "What do faint or absent breath sounds indicate in bronchiolitis?", answer: "Severe airway obstruction." },
+              { id: 717, question: "What is the clinical pearl regarding severity in bronchiolitis?", answer: "Respiratory distress may be disproportionately severe compared with the physical findings." },
+              { id: 718, question: "How is bronchiolitis diagnosed?", answer: "Clinically (history and exam). Routine viral testing, labs, and CXR are not recommended." },
+              { id: 719, question: "What are the typical CXR findings in bronchiolitis, and when is a CXR indicated?", answer: "Hyperinflation, flattened diaphragms, peribronchial thickening, patchy atelectasis. Indicated only if severe, atypical, or suspected complication (pneumothorax, bacterial pneumonia)." },
+              { id: 720, question: "How is RSV infection confirmed, and when is this needed?", answer: "Rapid antigen test on nasopharyngeal aspirate (not routinely needed)." },
+              { id: 721, question: "What are the main differential diagnoses of bronchiolitis?", answer: "Asthma, pneumonia, foreign body aspiration, GERD/aspiration, CF, cardiac failure, pertussis." },
+              { id: 722, question: "How can asthma be distinguished from bronchiolitis?", answer: "Asthma is unusual <1 yr; recurrent attacks, atopy/family history, consistent rapid response to bronchodilators." },
+              { id: 723, question: "How can heart failure be distinguished from bronchiolitis?", answer: "Cardiomegaly on CXR, true tender hepatomegaly, raised JVP, poor perfusion, edema." },
+              { id: 724, question: "How can foreign body aspiration be distinguished from bronchiolitis?", answer: "Sudden choking/gagging, unilateral localized wheeze, CXR shows unilateral obstructive emphysema or atelectasis." },
+              { id: 725, question: "How can bacterial pneumonia be distinguished from bronchiolitis?", answer: "High fever, toxic appearance, focal crackles/consolidation, less obstruction." },
+              { id: 726, question: "What are the indications for hospital admission in bronchiolitis?", answer: "Hypoxemia, apnea, respiratory distress, poor feeding/dehydration, high-risk infant, unreliable caregivers." },
+              { id: 727, question: "What does home care for mild bronchiolitis include?", answer: "Oral fluids, paracetamol for fever, humidified air if helpful." },
+              { id: 728, question: "What is the mainstay of hospital treatment for bronchiolitis?", answer: "Supportive: semi-upright positioning, nasal suctioning, oral/NG/IV fluids (avoid overhydration), and humidified oxygen if hypoxemic (SpO₂ persistently <90–92%)." },
+              { id: 729, question: "What is the role of bronchodilators in bronchiolitis?", answer: "Not routine. A trial may be given in selected cases and continued only if there is clear clinical improvement." },
+              { id: 730, question: "Which other therapies are not recommended routinely in bronchiolitis?", answer: "Epinephrine, systemic corticosteroids, antibiotics, chest physiotherapy, routine hypertonic saline." },
+              { id: 731, question: "What is the role of ribavirin in bronchiolitis?", answer: "Not for healthy infants. May be considered in high-risk infants with severe RSV." },
+              { id: 732, question: "How is respiratory support escalated in severe bronchiolitis?", answer: "High-flow nasal cannula, then CPAP, then intubation/mechanical ventilation (for apnea or respiratory failure)." },
+              { id: 733, question: "Which agents provide passive immunoprophylaxis against RSV?", answer: "Nirsevimab (single-dose long-acting mAb, for infants <8 months entering their first RSV season). Palivizumab (monthly IM during season) for high-risk infants: preterm <29 wk, chronic lung disease, significant CHD." },
+              { id: 734, question: "What other measures help prevent RSV bronchiolitis?", answer: "Maternal RSV vaccine (32–36 wk gestation), hand hygiene, breastfeeding, avoiding tobacco smoke." },
+              { id: 735, question: "What is the most important early complication of bronchiolitis in young infants?", answer: "Apnea (especially <2 months and premature infants)." },
+              { id: 736, question: "What are the other complications of bronchiolitis?", answer: "Respiratory failure, dehydration, secondary bacterial infection (otitis media is most common), SIADH." },
+              { id: 737, question: "What is the mortality rate in hospitalized infants with bronchiolitis?", answer: "<1%, usually from respiratory failure." },
+              { id: 738, question: "What is the long-term sequela of bronchiolitis?", answer: "Recurrent wheezing; about 25% develop asthma, higher with personal or family history of allergy." }
+            ]
+          },
+          {
+            id: "pneumonia",
+            name: "Pneumonia",
+            cards: [
+              { id: 828, question: "How is community-acquired pneumonia (CAP) defined?", answer: "Infection of the lung parenchyma (alveoli ± interstitium) acquired outside the hospital, with fever, respiratory symptoms, and evidence of parenchymal involvement." },
+              { id: 829, question: "What is the leading cause of death in children <5 years worldwide?", answer: "Pneumonia (most deaths in low- and middle-income countries)." },
+              { id: 830, question: "What is the most common cause of pneumonia in children overall?", answer: "Viruses (RSV most common in <2 yrs)." },
+              { id: 831, question: "What is the most common bacterial cause of pneumonia in children?", answer: "Streptococcus pneumoniae (all ages beyond the neonatal period)." },
+              { id: 832, question: "What are the risk factors for pneumonia in children?", answer: "Young age, prematurity, low birth weight, malnutrition, vitamin A deficiency, no exclusive breastfeeding, passive smoking, indoor air pollution, crowding." },
+              { id: 833, question: "Which underlying conditions predispose children to pneumonia?", answer: "CF, bronchiectasis, aspiration risks (TEF, GERD, CP, neuromuscular disease), immunodeficiency, left-to-right shunt CHD, intubation." },
+              { id: 834, question: "What are the common causative organisms of pneumonia in neonates?", answer: "Maternal genital tract organisms: Group B Streptococcus, E. coli, Klebsiella, S. aureus (also Listeria)." },
+              { id: 835, question: "Which organism causes pneumonia in infants aged 1–3 months with afebrile staccato cough and conjunctivitis?", answer: "Chlamydia trachomatis. Eosinophilia is a typical lab clue." },
+              { id: 836, question: "What is the most common atypical cause of pneumonia in school-age children and adolescents?", answer: "Mycoplasma pneumoniae (also Chlamydophila pneumoniae)." },
+              { id: 837, question: "Which organism is associated with pneumatoceles?", answer: "Staphylococcus aureus (also post-influenza pneumonia; can cause empyema)." },
+              { id: 838, question: "What organisms cause pneumonia in malnourished, hospitalized, or immunocompromised children?", answer: "Gram-negatives (Pseudomonas, E. coli, Klebsiella) and opportunistic organisms (Pneumocystis jirovecii)." },
+              { id: 839, question: "Which organism should be considered as a cause of pneumonia at all ages?", answer: "Mycobacterium tuberculosis." },
+              { id: 840, question: "What are the non-infectious causes of pneumonia?", answer: "Foreign body aspiration, liquid paraffin, kerosene/hydrocarbon chemical pneumonitis." },
+              { id: 841, question: "What are the routes of infection in pneumonia?", answer: "Droplet inhalation, direct spread, aspiration, hematogenous." },
+              { id: 842, question: "What are the histological patterns of pneumonia?", answer: "Lobar (homogeneous consolidation), bronchopneumonia (patchy peribronchial), interstitial (viral/Mycoplasma), necrotizing (abscess, pneumatocele, empyema)." },
+              { id: 843, question: "What are the classic stages of lobar pneumonia?", answer: "Congestion, red hepatization, gray hepatization, then resolution." },
+              { id: 844, question: "What causes hypoxemia in pneumonia?", answer: "Consolidation causes V/Q mismatch and shunting; severe disease may cause CO₂ retention." },
+              { id: 845, question: "What is the most sensitive clinical sign of pneumonia in children?", answer: "Tachypnea." },
+              { id: 846, question: "What are the signs of severe pneumonia in children?", answer: "Chest indrawing, grunting, nasal flaring, cyanosis/hypoxemia, inability to feed, lethargy." },
+              { id: 847, question: "How does the presentation of bacterial pneumonia differ from atypical pneumonia?", answer: "Bacterial: abrupt onset, high fever, focal findings. Atypical (Mycoplasma): gradual onset, dry cough, headache, malaise, extrapulmonary features (e.g., hemolysis, erythema multiforme)." },
+              { id: 848, question: "What is the classic sputum finding in pneumococcal pneumonia?", answer: "Productive/rusty sputum (rare in young children)." },
+              { id: 849, question: "Which condition can apical pneumonia mimic?", answer: "Meningitis (meningismus, convulsions)." },
+              { id: 850, question: "What are the chest examination findings in lobar consolidation?", answer: "Decreased chest expansion, increased tactile fremitus, dullness to percussion, bronchial breathing, increased vocal resonance, crackles." },
+              { id: 851, question: "What does abdominal pain in a child with fever and cough suggest?", answer: "Lower lobe pneumonia (diaphragmatic irritation)." },
+              { id: 852, question: "Why may consolidation signs be absent in infants with pneumonia?", answer: "In infants and young children they are often not evident despite pneumonia." },
+              { id: 801, question: "How do viral and bacterial pneumonia differ clinically and radiologically?", answer: "Viral: moderate fever, URTI common, mild toxicity, normal/lymphocytic WBC, interstitial/perihilar CXR. Bacterial: high fever, minimal URTI, toxic, neutrophilia, lobar/bronchopneumonia CXR." },
+              { id: 802, question: "Is a chest X-ray routinely required for pneumonia?", answer: "No, not for mild outpatient cases. Indicated for hospitalization, severe disease, uncertain diagnosis, or suspected complications (effusion, empyema)." },
+              { id: 803, question: "What are the typical CXR patterns in pneumonia?", answer: "Lobar consolidation with air bronchograms (bacterial); diffuse interstitial infiltrates (viral/atypical)." },
+              { id: 804, question: "Can a CXR reliably distinguish viral from bacterial pneumonia?", answer: "No, not reliably." },
+              { id: 805, question: "Which investigations are done in hospitalized children with pneumonia?", answer: "Pulse oximetry, CBC, CRP/ESR, blood culture (moderate-to-severe), and pleural fluid analysis if effusion present." },
+              { id: 806, question: "What is the yield of blood culture in bacterial pneumonia?", answer: "Positive in only 5–10% of bacterial cases." },
+              { id: 807, question: "Which tests identify atypical or viral causes of pneumonia?", answer: "Mycoplasma cold agglutinins/IgM ELISA; nasopharyngeal PCR for viruses." },
+              { id: 808, question: "What are the WHO tachypnea cutoffs by age?", answer: "<2 mo ≥60; 2–12 mo ≥50; 12 mo–5 yr ≥40 breaths/min." },
+              { id: 809, question: "How does WHO classify and manage \"pneumonia\"?", answer: "Fast breathing without chest indrawing: oral amoxicillin (or cotrimoxazole) for 5 days." },
+              { id: 810, question: "How does WHO classify and manage \"severe pneumonia\"?", answer: "Lower chest indrawing: hospital admission and parenteral penicillin." },
+              { id: 811, question: "How does WHO classify and manage \"very severe pneumonia\"?", answer: "Central cyanosis, severe indrawing, or inability to feed: urgent admission, IV ampicillin/penicillin plus gentamicin." },
+              { id: 812, question: "What are the indications for hospital admission in pneumonia?", answer: "SpO₂ <92%, severe respiratory distress/grunting, recurrent apnea, complications, inability to maintain oral feeding, toxic appearance, age <2–3 months, unreliable caregivers." },
+              { id: 813, question: "What is the oxygen saturation target in hospitalized children with pneumonia?", answer: "Humidified oxygen to keep SpO₂ >92%." },
+              { id: 814, question: "What does supportive care in pneumonia include?", answer: "IV fluids or NG feeds if unable to feed; paracetamol or ibuprofen for fever and pleuritic pain." },
+              { id: 815, question: "What is the role of chest physiotherapy in pneumonia?", answer: "No proven benefit in uncomplicated pneumonia." },
+              { id: 816, question: "What is the first-line outpatient therapy for presumed bacterial CAP in preschool children?", answer: "High-dose amoxicillin (90 mg/kg/day divided BID)." },
+              { id: 817, question: "What is the treatment for suspected atypical pneumonia in school-age children?", answer: "Macrolide (azithromycin)." },
+              { id: 818, question: "What is the inpatient antibiotic therapy for fully immunized children with pneumonia?", answer: "Ampicillin or penicillin G. Add vancomycin or clindamycin if MRSA suspected." },
+              { id: 819, question: "What is the first-line antibiotic therapy according to age or causative organism?", answer: "Neonates: ampicillin/penicillin plus gentamicin, or 3rd-gen cephalosporin. Staphylococcal: cloxacillin or co-amoxiclav; if resistant, vancomycin/teicoplanin/linezolid. Gram-negative: 3rd-gen cephalosporin plus aminoglycoside; Pseudomonas: ceftazidime or piperacillin–tazobactam." },
+              { id: 820, question: "Are antibiotics indicated for suspected viral pneumonia?", answer: "No." },
+              { id: 821, question: "What is the most common complication of pneumonia?", answer: "Parapneumonic effusion/empyema." },
+              { id: 822, question: "What are the other pulmonary complications of pneumonia?", answer: "Necrotizing pneumonia, lung abscess, pneumatocele, pneumothorax, bronchopleural fistula, ARDS, respiratory failure, chronic lung damage/bronchiectasis." },
+              { id: 823, question: "What are the extrapulmonary complications of pneumonia?", answer: "Septicemia, meningitis, purulent pericarditis, septic arthritis, osteomyelitis." },
+              { id: 824, question: "What are the pleural fluid features of empyema?", answer: "pH <7.2, glucose <40 mg/dL, LDH >1000, positive Gram stain/culture, high WBC (neutrophil-predominant)." },
+              { id: 825, question: "How is recurrent pneumonia defined?", answer: "≥2 episodes in 1 year or ≥3 episodes at any time, with radiographic clearing between episodes." },
+              { id: 826, question: "Which groups of children with pneumonia have higher mortality?", answer: "Young infants, severe malnutrition, resource-limited settings." },
+              { id: 827, question: "What are the key measures for preventing pneumonia?", answer: "Pneumococcal conjugate vaccine, Hib, influenza, and pertussis vaccines; breastfeeding; avoiding smoke exposure." }
+            ]
+          }
+        ]
+      },
+      {
+        id: "stridor",
+        name: "Stridor",
+        subtopics: [
+          {
+            id: "stridor-overview",
+            name: "Stridor",
+            cards: [
+              { id: 1401, question: "What are the most common causes of croup, epiglottitis, and bacterial tracheitis, respectively?", answer: "Croup: parainfluenza virus. Epiglottitis: Hib (unvaccinated), otherwise S. pneumoniae and group A Streptococcus. Bacterial tracheitis: Staphylococcus aureus." },
+              { id: 1402, question: "How do cough and drooling differ among croup, epiglottitis, and bacterial tracheitis?", answer: "Croup: barking cough, no drooling. Epiglottitis: no cough, drooling. Bacterial tracheitis: brassy cough, no drooling." },
+              { id: 1403, question: "How do fever and appearance differ among these three conditions?", answer: "Croup: low-grade fever, non-toxic. Epiglottitis: high fever, toxic. Bacterial tracheitis: high fever, toxic." },
+              { id: 1404, question: "How does the response to epinephrine and steroids differ among these three conditions?", answer: "Croup: good response. Epiglottitis: no proven benefit. Bacterial tracheitis: poor response." },
+              { id: 1405, question: "What are the characteristic radiographic signs of each condition?", answer: "Croup: steeple sign. Epiglottitis: thumb sign. Bacterial tracheitis: subglottic narrowing with irregular tracheal wall." },
+              { id: 1406, question: "How does the onset differ among these three conditions?", answer: "Croup: gradual over 1–3 days. Epiglottitis: abrupt over hours. Bacterial tracheitis: initial croup-like illness followed by abrupt worsening." },
+              { id: 1407, question: "How does laryngomalacia differ from croup in an infant with stridor?", answer: "Laryngomalacia: chronic, intermittent inspiratory stridor since the first weeks of life, afebrile, worse when supine or feeding. Croup: acute onset after a viral prodrome with barking cough and fever." }
+            ]
+          },
+          {
+            id: "laryngomalacia",
+            name: "Laryngomalacia",
+            cards: [
+              { id: 901, question: "How is laryngomalacia defined?", answer: "Inward collapse of the supraglottic structures during inspiration, caused by immature laryngeal cartilage and tone." },
+              { id: 902, question: "What is the most common congenital laryngeal anomaly and the most common cause of stridor in infants?", answer: "Laryngomalacia." },
+              { id: 903, question: "Which anatomical abnormalities are seen in laryngomalacia?", answer: "Short aryepiglottic folds, omega-shaped (curled) epiglottis, and redundant mucosa over the arytenoids that prolapses into the airway." },
+              { id: 904, question: "What is the underlying mechanism of airway obstruction in laryngomalacia?", answer: "Negative intrathoracic pressure during inspiration pulls the floppy supraglottic tissue into the laryngeal inlet." },
+              { id: 905, question: "What is the typical presentation of laryngomalacia?", answer: "Intermittent, high-pitched inspiratory stridor starting in the first few weeks of life." },
+              { id: 906, question: "What factors worsen the stridor in laryngomalacia?", answer: "Crying, feeding, agitation, supine position, and upper respiratory tract infections." },
+              { id: 907, question: "What factors improve the stridor in laryngomalacia?", answer: "Prone position and a calm, quiet state." },
+              { id: 908, question: "What is the natural course of laryngomalacia?", answer: "Symptoms typically peak at 6–8 months and resolve spontaneously by 12–24 months in most infants." },
+              { id: 909, question: "Which condition is most commonly associated with laryngomalacia?", answer: "Gastroesophageal reflux disease (GERD)." },
+              { id: 910, question: "How is laryngomalacia diagnosed?", answer: "Clinically; confirmed by flexible laryngoscopy in the awake infant." },
+              { id: 911, question: "What are the red flags suggesting severe laryngomalacia?", answer: "Cyanosis, apnea, suprasternal/subcostal retractions, feeding difficulty, failure to thrive, pectus excavatum, and hypoxemia." },
+              { id: 912, question: "Why is airway evaluation important in severe laryngomalacia?", answer: "Synchronous airway lesions (e.g., tracheomalacia, subglottic stenosis) may coexist." },
+              { id: 913, question: "What is the management of mild to moderate laryngomalacia?", answer: "Reassurance and observation with growth monitoring; treat associated GERD with acid suppression." },
+              { id: 914, question: "What is the treatment of severe laryngomalacia?", answer: "Supraglottoplasty; tracheostomy is rarely required." },
+              { id: 915, question: "What are the complications of severe laryngomalacia?", answer: "Failure to thrive, aspiration, pectus excavatum, obstructive sleep apnea, pulmonary hypertension, and cor pulmonale." }
+            ]
+          },
+          {
+            id: "croup",
+            name: "Croup (Laryngotracheobronchitis)",
+            cards: [
+              { id: 1001, question: "How is croup defined?", answer: "Acute viral infection of the upper airway causing subglottic inflammation, characterized by barking cough, hoarseness, and inspiratory stridor." },
+              { id: 1002, question: "What is the most common cause of croup?", answer: "Parainfluenza virus (type 1 most common)." },
+              { id: 1003, question: "What other viruses cause croup?", answer: "RSV, influenza, adenovirus, human metapneumovirus, rhinovirus, and measles." },
+              { id: 1004, question: "What are the typical age and season of croup?", answer: "6 months to 3 years (peak around 2 years); autumn and early winter; more common in boys." },
+              { id: 1005, question: "Why does croup cause stridor in young children?", answer: "Edema of the subglottic region, the narrowest part of the pediatric airway (at the cricoid ring), obstructs airflow." },
+              { id: 1006, question: "What is the typical clinical course of croup?", answer: "1–3 days of coryza and low-grade fever, followed by barking (seal-like) cough, hoarseness, and inspiratory stridor, often worse at night; resolves in 3–7 days." },
+              { id: 1007, question: "Which findings indicate moderate to severe croup?", answer: "Stridor at rest, retractions, tachypnea, hypoxemia, cyanosis, and lethargy or agitation." },
+              { id: 1008, question: "How does spasmodic croup differ from viral croup?", answer: "Sudden nocturnal onset, afebrile, minimal or no prodrome, tends to recur, and is associated with atopy." },
+              { id: 1009, question: "How is croup diagnosed?", answer: "Clinically; severity is assessed using a croup score (e.g., Westley score)." },
+              { id: 1010, question: "What is the characteristic radiographic sign of croup?", answer: "Steeple sign (subglottic narrowing) on the anteroposterior neck film." },
+              { id: 1011, question: "Is neck imaging required to diagnose croup?", answer: "No, it is reserved for atypical presentations." },
+              { id: 1012, question: "What are the main differential diagnoses of croup?", answer: "Epiglottitis, bacterial tracheitis, foreign body aspiration, retropharyngeal abscess, and angioedema." },
+              { id: 1013, question: "What is the treatment for mild croup?", answer: "Single dose of dexamethasone (0.15–0.6 mg/kg, oral); humidified air has no proven benefit." },
+              { id: 1014, question: "What is the treatment for moderate to severe croup?", answer: "Nebulized epinephrine (racemic or L-epinephrine) plus dexamethasone, with oxygen if hypoxemic." },
+              { id: 1015, question: "What is the duration of effect of nebulized epinephrine in croup?", answer: "1–2 hours, so patients should be observed for 2–4 hours for rebound symptoms." },
+              { id: 1016, question: "What are the indications for hospital admission in croup?", answer: "Persistent stridor at rest after treatment, hypoxemia, severe distress, poor oral intake, age <6 months, toxic appearance, or repeated epinephrine requirement." },
+              { id: 1017, question: "What supportive options exist for severe croup not responding to treatment?", answer: "Heliox and intubation with a smaller-than-expected endotracheal tube." },
+              { id: 1018, question: "What are the complications of croup?", answer: "Bacterial superinfection (tracheitis, pneumonia), post-obstructive pulmonary edema, and respiratory failure." },
+              { id: 1019, question: "What is the prognosis of croup?", answer: "Usually self-limited; fewer than 5% are hospitalized and fewer than 1% require intubation." }
+            ]
+          },
+          {
+            id: "epiglottitis",
+            name: "Epiglottitis",
+            cards: [
+              { id: 1101, question: "How is acute epiglottitis defined?", answer: "Bacterial cellulitis of the epiglottis and surrounding supraglottic structures, causing rapidly progressive airway obstruction; a medical emergency." },
+              { id: 1102, question: "What was the most common cause of epiglottitis before routine vaccination?", answer: "Haemophilus influenzae type b (Hib)." },
+              { id: 1103, question: "What are the common causes in the vaccine era?", answer: "Streptococcus pneumoniae, group A Streptococcus, and Staphylococcus aureus (including MRSA)." },
+              { id: 1104, question: "What is the classic age group affected?", answer: "2–6 years; cases are now seen more in older children and adults since Hib vaccination." },
+              { id: 1105, question: "What is the typical onset of epiglottitis?", answer: "Abrupt onset with high fever, toxic appearance, severe sore throat, and rapid progression within hours." },
+              { id: 1106, question: "What are the classic symptoms and signs of epiglottitis?", answer: "Dysphagia, drooling, muffled “hot potato” voice, respiratory distress, and soft inspiratory stridor, usually without cough." },
+              { id: 1107, question: "What position does a child with epiglottitis typically adopt?", answer: "Sitting upright, leaning forward with neck extended (tripod or sniffing position)." },
+              { id: 1108, question: "What is the characteristic lateral neck X-ray finding in epiglottitis?", answer: "Thumb sign (swollen epiglottis); the vallecula sign may also be present." },
+              { id: 1109, question: "What is the finding on direct visualization of the epiglottis?", answer: "Swollen, cherry-red epiglottis." },
+              { id: 1110, question: "What laboratory findings are seen in epiglottitis?", answer: "Leukocytosis with neutrophilia; blood cultures are often positive." },
+              { id: 1111, question: "What is the first priority in suspected epiglottitis?", answer: "Securing the airway, with intubation in a controlled setting (operating room) by an experienced team (anesthesia/ENT)." },
+              { id: 1112, question: "What should be avoided in a child with suspected epiglottitis?", answer: "Throat examination with a tongue depressor, laying the child supine, separating the child from the parent, and agitating procedures such as IV insertion before airway control." },
+              { id: 1113, question: "What is the antibiotic treatment of epiglottitis?", answer: "IV ceftriaxone or cefotaxime, plus vancomycin or clindamycin if MRSA is suspected; total course 7–10 days." },
+              { id: 1114, question: "What is the role of corticosteroids in epiglottitis?", answer: "Not proven beneficial." },
+              { id: 1115, question: "What is the most serious complication of epiglottitis?", answer: "Sudden complete airway obstruction leading to respiratory arrest." },
+              { id: 1116, question: "What are the other complications of epiglottitis?", answer: "Pneumonia, cervical lymphadenitis, epiglottic abscess, meningitis, and septic arthritis." },
+              { id: 1117, question: "How can epiglottitis due to Hib be prevented?", answer: "Hib vaccination; rifampin prophylaxis for household contacts in selected cases (e.g., unvaccinated young child in the household)." }
+            ]
+          },
+          {
+            id: "foreign-body-aspiration",
+            name: "Foreign Body Aspiration",
+            cards: [
+              { id: 1201, question: "What is foreign body aspiration?", answer: "Inhalation of food or other material into the airway, causing partial or complete obstruction." },
+              { id: 1202, question: "What is the most common age group for foreign body aspiration?", answer: "Children under 3 years (peak at 1–2 years); more common in boys." },
+              { id: 1203, question: "What are the most common aspirated foreign bodies in children?", answer: "Organic food items, especially peanuts and other nuts, seeds, and popcorn." },
+              { id: 1204, question: "Why are toddlers at higher risk of aspiration?", answer: "Absence of molars, tendency to explore with the mouth, immature swallowing and airway protection, and eating while running, crying, or laughing." },
+              { id: 1205, question: "What is the most common site of aspirated foreign bodies in children?", answer: "The bronchi, slightly more often the right main bronchus (wider, shorter, and more vertical)." },
+              { id: 1206, question: "Which location is the most dangerous?", answer: "Larynx and trachea, because they can cause complete airway obstruction." },
+              { id: 1207, question: "What is the key historical clue to foreign body aspiration?", answer: "Witnessed sudden choking, gagging, or coughing episode in a previously healthy child." },
+              { id: 1208, question: "What are the phases of foreign body aspiration?", answer: "Acute choking episode, an asymptomatic interval, then complication phase (persistent cough, wheeze, recurrent pneumonia)." },
+              { id: 1209, question: "What are the signs of laryngeal or tracheal foreign body?", answer: "Stridor, aphonia, cyanosis, and inability to cough or cry (universal choking sign)." },
+              { id: 1210, question: "What is the classic triad of bronchial foreign body?", answer: "Cough, unilateral (localized) wheeze, and decreased breath sounds on the affected side." },
+              { id: 1211, question: "Which conditions are commonly misdiagnosed in delayed foreign body aspiration?", answer: "Asthma (no response to bronchodilators), pneumonia, and bronchiolitis." },
+              { id: 1212, question: "How often is the chest X-ray normal in foreign body aspiration?", answer: "Frequently normal, especially with radiolucent organic material such as nuts." },
+              { id: 1213, question: "What are the radiographic findings in bronchial foreign body?", answer: "Unilateral obstructive hyperinflation (ball-valve effect), atelectasis, and mediastinal shift." },
+              { id: 1214, question: "What is the best radiographic technique to detect air trapping?", answer: "Expiratory or lateral decubitus films showing failure of the affected lung to deflate." },
+              { id: 1215, question: "What is the gold standard for diagnosis and treatment?", answer: "Rigid bronchoscopy." },
+              { id: 1216, question: "How is choking managed in an infant under 1 year?", answer: "Five back blows alternating with five chest thrusts; avoid abdominal thrusts." },
+              { id: 1217, question: "How is choking managed in a child older than 1 year?", answer: "Abdominal thrusts (Heimlich maneuver); begin CPR if the child becomes unresponsive." },
+              { id: 1218, question: "Why should blind finger sweeps be avoided?", answer: "They may push the object deeper into the airway." },
+              { id: 1219, question: "What is the definitive treatment in a stable child?", answer: "Removal by rigid bronchoscopy under general anesthesia." },
+              { id: 1220, question: "What are the complications of foreign body aspiration?", answer: "Recurrent or persistent pneumonia, atelectasis, bronchiectasis, lung abscess, pneumothorax, airway edema, hypoxic brain injury, and death." },
+              { id: 1221, question: "What are the key preventive measures?", answer: "Avoid nuts, popcorn, and hard or round foods in children under 4–5 years, supervise meals, and discourage eating while running or playing." }
+            ]
+          },
+          {
+            id: "bacterial-tracheitis",
+            name: "Bacterial Tracheitis",
+            cards: [
+              { id: 1301, question: "How is bacterial tracheitis defined?", answer: "Acute bacterial infection of the trachea with thick purulent secretions and mucosal sloughing (pseudomembranes), causing life-threatening airway obstruction." },
+              { id: 1302, question: "What is the most common cause of bacterial tracheitis?", answer: "Staphylococcus aureus (including MRSA)." },
+              { id: 1303, question: "What other organisms cause bacterial tracheitis?", answer: "Group A Streptococcus, Streptococcus pneumoniae, Haemophilus influenzae, and Moraxella catarrhalis." },
+              { id: 1304, question: "What is the typical preceding event?", answer: "A viral respiratory infection (e.g., influenza, parainfluenza, croup-like illness); prior intubation is also a risk factor." },
+              { id: 1305, question: "Which age group is typically affected?", answer: "Young children, with a mean age of about 5 years." },
+              { id: 1306, question: "What is the typical clinical course of bacterial tracheitis?", answer: "A croup-like illness for 1–3 days followed by abrupt deterioration with high fever, toxic appearance, brassy cough, and stridor." },
+              { id: 1307, question: "Which findings differentiate bacterial tracheitis from viral croup?", answer: "Toxic appearance, high fever, thick purulent secretions, and poor response to epinephrine and steroids." },
+              { id: 1308, question: "Which findings differentiate bacterial tracheitis from epiglottitis?", answer: "No drooling, the child can lie flat, and a cough is present." },
+              { id: 1309, question: "What is the finding on direct laryngoscopy or bronchoscopy?", answer: "Normal epiglottis with subglottic narrowing and thick purulent secretions or pseudomembranes." },
+              { id: 1310, question: "What is the finding on lateral neck X-ray?", answer: "Subglottic narrowing with an irregular tracheal wall (membranes) and a normal epiglottis." },
+              { id: 1311, question: "Which laboratory tests support the diagnosis?", answer: "Leukocytosis with left shift; tracheal secretion culture identifies the organism." },
+              { id: 1312, question: "What is the first priority in management?", answer: "Airway protection; most children need intubation with frequent suctioning, and bronchoscopy may be needed for debridement." },
+              { id: 1313, question: "What is the antibiotic regimen for bacterial tracheitis?", answer: "IV vancomycin plus a third-generation cephalosporin (ceftriaxone or cefotaxime) for 10–14 days." },
+              { id: 1314, question: "What are the complications of bacterial tracheitis?", answer: "Airway obstruction from pseudomembranes, respiratory failure or arrest, pneumonia, ARDS, toxic shock syndrome, septic shock, and subglottic stenosis after intubation." }
+            ]
+          }
+        ]
+      },
+      {
+        id: "chronic-genetic",
+        name: "Chronic and Genetic Respiratory Diseases",
+        subtopics: [
+          {
+            id: "asthma",
+            name: "Asthma",
+            cards: [
+              { id: 1601, question: "How is asthma defined?", answer: "Chronic inflammatory disorder of the airways with variable, reversible airflow obstruction and bronchial hyperresponsiveness, presenting with recurrent wheeze, cough, breathlessness, and chest tightness." },
+              { id: 1602, question: "What is the most common chronic disease of childhood?", answer: "Asthma." },
+              { id: 1603, question: "What is the strongest predisposing factor for asthma?", answer: "Atopy (personal or family history of allergic disease)." },
+              { id: 1604, question: "What are the other risk factors for asthma?", answer: "Family history of asthma, male sex before puberty, prematurity, maternal smoking, obesity, and early-life viral lower respiratory infections." },
+              { id: 1605, question: "What is the atopic triad?", answer: "Asthma, allergic rhinitis, and atopic dermatitis." },
+              { id: 1606, question: "What is the most common trigger of asthma exacerbations in children?", answer: "Viral respiratory infections." },
+              { id: 1607, question: "What are the other common triggers of asthma?", answer: "Allergens (house dust mites are the most common indoor allergen), exercise, cold air, tobacco smoke, emotional stress, GERD, and NSAIDs/aspirin." },
+              { id: 1608, question: "What is the most common wheezing phenotype in preschool children?", answer: "Transient early wheezing, which is triggered by viral infections and resolves by around 3 years of age." },
+              { id: 1609, question: "What are the key pathological features of asthma?", answer: "Airway inflammation, bronchoconstriction, mucus hypersecretion, mucosal edema, and airway remodeling." },
+              { id: 1610, question: "What is the difference between the early and late asthmatic response?", answer: "Early response (within minutes) is due to mast cell degranulation and bronchospasm and responds to bronchodilators. Late response (4–8 hours) is due to inflammatory cell infiltration and edema and responds to corticosteroids." },
+              { id: 1611, question: "What is airway remodeling?", answer: "Structural changes including subepithelial fibrosis, smooth muscle hypertrophy, and goblet cell hyperplasia, which may cause fixed airflow obstruction." },
+              { id: 1612, question: "What is the typical clinical presentation of asthma?", answer: "Recurrent episodes of cough, wheeze, dyspnea, and chest tightness, worse at night or early morning, triggered by exposures, and relieved by bronchodilators." },
+              { id: 1613, question: "What is cough-variant asthma?", answer: "Asthma in which chronic nocturnal or exercise-induced cough is the only symptom." },
+              { id: 1614, question: "What are the typical examination findings in asthma?", answer: "Expiratory wheeze with prolonged expiration; the chest may be normal between attacks." },
+              { id: 1615, question: "What is the timing of exercise-induced bronchoconstriction?", answer: "Symptoms begin 5–15 minutes after exercise, peak 5–10 minutes after stopping, and can be prevented by inhaled short-acting beta-agonist before exercise." },
+              { id: 1616, question: "What are the signs of a severe asthma attack?", answer: "Inability to speak full sentences, use of accessory muscles, cyanosis, SpO₂ below 90%, altered consciousness, and silent chest." },
+              { id: 1617, question: "What is the significance of a silent chest in acute asthma?", answer: "Severe airway obstruction with minimal air movement, indicating impending respiratory failure." },
+              { id: 1618, question: "What does a normal or rising PaCO₂ in a tachypneic asthmatic child indicate?", answer: "Respiratory muscle fatigue and impending respiratory failure." },
+              { id: 1619, question: "How is asthma diagnosed in children under 5 years?", answer: "Clinically, based on recurrent wheeze, response to bronchodilator trial, and exclusion of other causes." },
+              { id: 1620, question: "What is the diagnostic test for asthma in children 5 years and older?", answer: "Spirometry showing airflow obstruction (reduced FEV1/FVC) with bronchodilator reversibility (increase in FEV1 of at least 12%)." },
+              { id: 1621, question: "Which other tests support the diagnosis of asthma?", answer: "Peak flow variability, exercise challenge, methacholine challenge (high negative predictive value), and fractional exhaled nitric oxide (FeNO)." },
+              { id: 1622, question: "What is the role of allergy testing in asthma?", answer: "Skin prick or specific IgE testing identifies sensitization to allergens and guides trigger avoidance." },
+              { id: 1623, question: "Is chest X-ray routinely required in asthma?", answer: "No; it is indicated to exclude other diagnoses or complications (pneumothorax, pneumonia)." },
+              { id: 1624, question: "What are the main differential diagnoses of recurrent wheezing in children?", answer: "Foreign body aspiration, cystic fibrosis, GERD with aspiration, tracheomalacia, vascular ring, primary ciliary dyskinesia, congenital heart disease, and immunodeficiency." },
+              { id: 1625, question: "Which features suggest an alternative diagnosis to asthma?", answer: "Neonatal onset, failure to thrive, vomiting-associated symptoms, unilateral findings, stridor, clubbing, and poor response to asthma therapy." },
+              { id: 1626, question: "How is intermittent asthma distinguished from persistent asthma?", answer: "Intermittent asthma: symptoms and reliever use 2 days a week or fewer, with infrequent nighttime awakenings. Persistent asthma: symptoms more than 2 days a week (mild), daily (moderate), or throughout the day (severe)." },
+              { id: 1627, question: "What are the goals of asthma management?", answer: "Achieve symptom control, prevent exacerbations, maintain normal activity and lung function, and minimize medication side effects." },
+              { id: 1628, question: "What is the first-line reliever for asthma?", answer: "Inhaled short-acting beta-2 agonist (e.g., salbutamol)." },
+              { id: 1629, question: "What is the most effective long-term controller therapy for persistent asthma?", answer: "Inhaled corticosteroids (ICS)." },
+              { id: 1630, question: "How is asthma treatment stepped up?", answer: "Low-dose ICS, then low-dose ICS plus LABA or medium-dose ICS, then medium to high-dose ICS plus LABA, with add-on options including leukotriene receptor antagonist and long-acting muscarinic antagonist." },
+              { id: 1631, question: "Why should LABA never be used as monotherapy in asthma?", answer: "It increases the risk of severe exacerbations and asthma-related death; it must be combined with ICS." },
+              { id: 1632, question: "What is the main safety concern with montelukast?", answer: "Neuropsychiatric adverse effects (sleep disturbance, mood changes, suicidal ideation)." },
+              { id: 1633, question: "Which biologic therapies are used in severe asthma?", answer: "Omalizumab (anti-IgE), mepolizumab (anti-IL-5), and dupilumab (anti-IL-4/IL-13 receptor) for severe allergic or eosinophilic asthma." },
+              { id: 1634, question: "What are the side effects of inhaled corticosteroids?", answer: "Oral candidiasis and dysphonia (reduced by spacer and mouth rinsing), small transient decrease in growth velocity without effect on final adult height, and adrenal suppression at high doses." },
+              { id: 1635, question: "Which device should be used for metered-dose inhalers in children?", answer: "Spacer (with a face mask in young children)." },
+              { id: 1636, question: "What should be checked before stepping up therapy?", answer: "Inhaler technique, adherence, trigger exposure, and alternative diagnoses." },
+              { id: 1637, question: "What are the non-pharmacological measures in asthma care?", answer: "Trigger avoidance (tobacco smoke, dust mites), annual influenza vaccination, patient education, and a written asthma action plan." },
+              { id: 1638, question: "What is the initial treatment of an acute asthma exacerbation?", answer: "Oxygen if hypoxemic, repeated inhaled salbutamol via spacer or nebulizer (every 20 minutes for the first hour), and early systemic corticosteroids." },
+              { id: 1639, question: "What is the corticosteroid regimen in acute exacerbation?", answer: "Oral prednisolone 1–2 mg/kg/day (maximum 40–60 mg) for 3–5 days; dexamethasone 0.6 mg/kg is an alternative." },
+              { id: 1640, question: "What is added in severe exacerbations?", answer: "Inhaled ipratropium bromide, and IV magnesium sulfate (25–75 mg/kg, maximum 2 g) if no response." },
+              { id: 1641, question: "What is status asthmaticus?", answer: "Severe asthma exacerbation that does not respond to initial bronchodilator and corticosteroid therapy." },
+              { id: 1642, question: "What are the indications for ICU admission or intubation?", answer: "Respiratory fatigue, altered consciousness, worsening hypoxemia or hypercapnia, and respiratory arrest." },
+              { id: 1643, question: "What are the criteria for hospital discharge after an exacerbation?", answer: "Sustained clinical improvement with no distress, SpO₂ above 94% in room air, adequate inhaler technique, and a plan for oral steroids, reliever, controller adjustment, and follow-up within a week." },
+              { id: 1644, question: "What are the complications of asthma?", answer: "Status asthmaticus, respiratory failure, pneumothorax and pneumomediastinum, atelectasis from mucus plugging, allergic bronchopulmonary aspergillosis, and death." },
+              { id: 1645, question: "What are the consequences of poorly controlled asthma in children?", answer: "School absenteeism, exercise limitation, sleep disturbance, growth impairment, and irreversible airway remodeling." },
+              { id: 1646, question: "Which factors predict persistence of asthma into adulthood?", answer: "Atopy, eczema, family history of asthma, early-onset severe disease, and frequent exacerbations." }
+            ]
+          },
+          {
+            id: "cystic-fibrosis",
+            name: "Cystic Fibrosis",
+            cards: [
+              { id: 1501, question: "How is cystic fibrosis defined?", answer: "Autosomal recessive multisystem disorder caused by mutations in the CFTR gene on chromosome 7, leading to defective chloride and bicarbonate transport and thick, viscous secretions." },
+              { id: 1502, question: "What is the normal function of the CFTR protein?", answer: "A cAMP-regulated chloride channel on the apical membrane of epithelial cells that also regulates sodium absorption (ENaC) and water movement." },
+              { id: 1503, question: "Why is sweat chloride elevated in cystic fibrosis?", answer: "Failure of chloride reabsorption in the sweat duct leads to excessive loss of sodium chloride in sweat." },
+              { id: 1504, question: "What is the mechanism of lung disease in cystic fibrosis?", answer: "Dehydrated airway surface liquid causes thick mucus, impaired mucociliary clearance, chronic bacterial infection, and neutrophil-driven inflammation, resulting in bronchiectasis." },
+              { id: 1505, question: "What is the mechanism of pancreatic insufficiency in cystic fibrosis?", answer: "Thick secretions obstruct pancreatic ducts, causing fibrosis and loss of exocrine function." },
+              { id: 1506, question: "What is the earliest manifestation of cystic fibrosis in the neonatal period?", answer: "Meconium ileus (about 15–20% of patients), which is highly suggestive of cystic fibrosis." },
+              { id: 1507, question: "What are the typical respiratory features of cystic fibrosis?", answer: "Chronic productive cough, recurrent pneumonia, wheeze, hyperinflation, digital clubbing, chronic sinusitis, and nasal polyps." },
+              { id: 1508, question: "What are the typical gastrointestinal features of cystic fibrosis?", answer: "Steatorrhea, failure to thrive despite good appetite, rectal prolapse, and distal intestinal obstruction syndrome (DIOS)." },
+              { id: 1509, question: "Which vitamin deficiencies occur in cystic fibrosis?", answer: "Fat-soluble vitamins A, D, E, and K." },
+              { id: 1510, question: "Which electrolyte and acid-base disturbance can occur in infants with cystic fibrosis?", answer: "Hyponatremic, hypochloremic metabolic alkalosis with dehydration (pseudo-Bartter syndrome)." },
+              { id: 1511, question: "What is the cause of infertility in males with cystic fibrosis?", answer: "Congenital bilateral absence of the vas deferens (azoospermia), present in more than 95% of males." },
+              { id: 1512, question: "Which other extrapulmonary features are seen in cystic fibrosis?", answer: "Salty-tasting skin, focal biliary cirrhosis, cystic fibrosis-related diabetes, and osteoporosis." },
+              { id: 1513, question: "Which organisms commonly infect the airways of young children with cystic fibrosis?", answer: "Staphylococcus aureus and Haemophilus influenzae." },
+              { id: 1514, question: "What is the most common chronic airway pathogen in adolescents and adults with cystic fibrosis?", answer: "Pseudomonas aeruginosa (mucoid phenotype, associated with faster lung function decline)." },
+              { id: 1515, question: "Which fungal complication is seen in cystic fibrosis?", answer: "Allergic bronchopulmonary aspergillosis (ABPA)." },
+              { id: 1516, question: "How is cystic fibrosis detected on newborn screening?", answer: "Elevated immunoreactive trypsinogen (IRT), followed by a repeat IRT or CFTR mutation analysis." },
+              { id: 1517, question: "What is the gold standard diagnostic test for cystic fibrosis?", answer: "Sweat chloride test by pilocarpine iontophoresis." },
+              { id: 1518, question: "What are the sweat chloride cutoff values?", answer: "60 mmol/L or higher is diagnostic; 30–59 mmol/L is intermediate; below 30 mmol/L makes cystic fibrosis unlikely." },
+              { id: 1519, question: "What conditions can cause a false-positive sweat chloride test?", answer: "Untreated adrenal insufficiency, ectodermal dysplasia, hypothyroidism, malnutrition, glycogen storage disease type I, and mucopolysaccharidosis." },
+              { id: 1520, question: "How is the diagnosis confirmed when the sweat test is borderline?", answer: "CFTR genetic testing for two disease-causing mutations, or nasal potential difference measurement." },
+              { id: 1521, question: "Which test confirms pancreatic insufficiency?", answer: "Low fecal elastase (also a 72-hour fecal fat collection)." },
+              { id: 1522, question: "What are the chest X-ray findings in cystic fibrosis?", answer: "Hyperinflation, bronchial wall thickening, mucus plugging, and bronchiectasis with upper lobe predominance." },
+              { id: 1523, question: "What is the typical pattern on pulmonary function testing?", answer: "Obstructive pattern with reduced FEV1." },
+              { id: 1524, question: "What are the main pillars of cystic fibrosis management?", answer: "Airway clearance, treatment of infection, nutritional support with pancreatic enzymes, and CFTR modulator therapy, delivered by a multidisciplinary team." },
+              { id: 1525, question: "What are the airway clearance therapies in cystic fibrosis?", answer: "Chest physiotherapy, positive expiratory pressure devices or vests, exercise, hypertonic saline, and dornase alfa." },
+              { id: 1526, question: "What is the mechanism of dornase alfa?", answer: "Recombinant human DNase that cleaves extracellular DNA from neutrophils, reducing sputum viscosity." },
+              { id: 1527, question: "Which medication is used chronically in patients with Pseudomonas colonization to reduce exacerbations?", answer: "Azithromycin (anti-inflammatory effect)." },
+              { id: 1528, question: "How is a pulmonary exacerbation treated?", answer: "Intensified airway clearance and IV antibiotics guided by sputum culture, usually two anti-pseudomonal agents (e.g., tobramycin plus ceftazidime or piperacillin-tazobactam) for about 14 days." },
+              { id: 1529, question: "How is chronic Pseudomonas infection managed?", answer: "Inhaled antibiotics (tobramycin, aztreonam, or colistin); early eradication therapy is given for new isolates." },
+              { id: 1530, question: "How is pancreatic insufficiency treated?", answer: "Pancreatic enzyme replacement taken with every meal and snack, plus fat-soluble vitamin supplementation." },
+              { id: 1531, question: "Which complication is associated with excessively high doses of pancreatic enzymes?", answer: "Fibrosing colonopathy (the daily lipase dose should not exceed 10,000 units/kg)." },
+              { id: 1532, question: "What are the nutritional recommendations in cystic fibrosis?", answer: "High-calorie (120–150% of the usual requirement), high-fat diet, with salt supplementation." },
+              { id: 1533, question: "What is the role of CFTR modulators?", answer: "They correct the underlying protein defect: ivacaftor (potentiator) for gating mutations, and elexacaftor/tezacaftor/ivacaftor for patients with at least one F508del allele." },
+              { id: 1534, question: "What is the role of infection control measures?", answer: "Patients with cystic fibrosis should avoid close contact with each other to prevent cross-infection." },
+              { id: 1535, question: "What is the definitive treatment for end-stage lung disease?", answer: "Lung transplantation." },
+              { id: 1536, question: "What are the pulmonary complications of cystic fibrosis?", answer: "Bronchiectasis, hemoptysis, pneumothorax, ABPA, respiratory failure, and cor pulmonale." },
+              { id: 1537, question: "What is the most common cause of death in cystic fibrosis?", answer: "Respiratory failure from progressive lung disease." },
+              { id: 1538, question: "What causes intestinal obstruction in older children and adults with cystic fibrosis?", answer: "Distal intestinal obstruction syndrome (DIOS, meconium ileus equivalent)." },
+              { id: 1539, question: "What are the other gastrointestinal and hepatic complications?", answer: "Pancreatitis (in pancreatic-sufficient patients), gallstones, biliary cirrhosis with portal hypertension, and rectal prolapse." },
+              { id: 1540, question: "When should screening for cystic fibrosis-related diabetes begin?", answer: "Annual oral glucose tolerance test starting at about 10 years of age." },
+              { id: 1541, question: "What is the inheritance risk for a couple who are both carriers?", answer: "25% chance of an affected child in each pregnancy, 50% chance of a carrier child." },
+              { id: 1542, question: "What is the current prognosis in cystic fibrosis?", answer: "Median predicted survival now exceeds 50 years with modern care and CFTR modulators." }
+            ]
+          },
+          {
+            id: "bronchiectasis",
+            name: "Bronchiectasis",
+            cards: [
+              { id: 1701, question: "How is bronchiectasis defined?", answer: "Chronic, irreversible dilatation and destruction of the bronchial walls, associated with chronic infection, inflammation, and impaired mucociliary clearance." },
+              { id: 1702, question: "What is the “vicious cycle” in the pathogenesis of bronchiectasis?", answer: "Impaired mucociliary clearance leads to infection, infection causes neutrophilic inflammation, inflammation damages the airway wall, and the damaged airway further impairs clearance." },
+              { id: 1703, question: "What are the morphological types of bronchiectasis?", answer: "Cylindrical (tubular), varicose, and cystic (saccular); the cystic type is the most severe." },
+              { id: 1704, question: "What is the most common cause of bronchiectasis in children in developed countries?", answer: "Cystic fibrosis." },
+              { id: 1705, question: "What is the most common cause of non-CF bronchiectasis worldwide?", answer: "Post-infectious causes (e.g., severe pneumonia, pertussis, measles, adenovirus, tuberculosis)." },
+              { id: 1706, question: "What are the main causes of bronchiectasis in children?", answer: "Cystic fibrosis, primary ciliary dyskinesia, immunodeficiency, post-infectious damage, aspiration (including retained foreign body), allergic bronchopulmonary aspergillosis, and structural airway abnormalities." },
+              { id: 1707, question: "Which immunodeficiencies predispose to bronchiectasis?", answer: "Antibody deficiencies (X-linked agammaglobulinemia, common variable immunodeficiency, IgG subclass deficiency), HIV, and complement or phagocyte defects." },
+              { id: 1708, question: "What is primary ciliary dyskinesia and how is it inherited?", answer: "Autosomal recessive defect of ciliary structure (commonly dynein arm defect) causing impaired mucociliary clearance." },
+              { id: 1709, question: "What is Kartagener syndrome?", answer: "Triad of situs inversus, chronic sinusitis, and bronchiectasis, seen in about half of patients with primary ciliary dyskinesia." },
+              { id: 1710, question: "Which clinical clues suggest primary ciliary dyskinesia?", answer: "Neonatal respiratory distress, year-round wet cough and rhinitis, chronic otitis media with effusion, and situs abnormalities." },
+              { id: 1711, question: "What structural abnormalities can cause bronchiectasis?", answer: "Bronchial stenosis, bronchial cartilage deficiency (Williams-Campbell syndrome), tracheobronchomegaly (Mounier-Kuhn syndrome), pulmonary sequestration, and extrinsic compression by lymph nodes (right middle lobe syndrome)." },
+              { id: 1712, question: "Does the distribution of bronchiectasis help identify the cause?", answer: "Yes. Localized disease suggests foreign body, obstruction, or post-infectious damage; diffuse disease suggests cystic fibrosis, primary ciliary dyskinesia, or immunodeficiency." },
+              { id: 1713, question: "Which lobes are typically involved in cystic fibrosis and in post-infectious bronchiectasis?", answer: "Cystic fibrosis: upper lobes. Post-infectious: lower lobes. Allergic bronchopulmonary aspergillosis: central and upper lobes." },
+              { id: 1714, question: "What is the typical presenting symptom of bronchiectasis?", answer: "Chronic daily wet (productive) cough with purulent sputum lasting more than 8 weeks." },
+              { id: 1715, question: "What other symptoms and signs occur in bronchiectasis?", answer: "Recurrent chest infections, hemoptysis, dyspnea, wheeze, halitosis, digital clubbing, coarse crackles, and failure to thrive." },
+              { id: 1716, question: "What is protracted bacterial bronchitis?", answer: "Chronic wet cough lasting more than 4 weeks that resolves with 2 weeks of antibiotics (e.g., amoxicillin-clavulanate); it may progress to bronchiectasis if untreated." },
+              { id: 1717, question: "What is the source of bleeding in hemoptysis in bronchiectasis?", answer: "Hypertrophied, tortuous bronchial arteries." },
+              { id: 1718, question: "What is the most common pathogen in children with non-CF bronchiectasis?", answer: "Non-typeable Haemophilus influenzae." },
+              { id: 1719, question: "Which other organisms are commonly isolated?", answer: "Streptococcus pneumoniae, Moraxella catarrhalis, Staphylococcus aureus, and Pseudomonas aeruginosa (associated with more severe disease)." },
+              { id: 1720, question: "What is the gold standard imaging study for bronchiectasis?", answer: "High-resolution CT (HRCT) of the chest." },
+              { id: 1721, question: "What are the HRCT findings in bronchiectasis?", answer: "Bronchoarterial ratio greater than 1 (signet ring sign), lack of bronchial tapering, bronchi visible within 1 cm of the pleural surface, and bronchial wall thickening." },
+              { id: 1722, question: "What are the chest X-ray findings in bronchiectasis?", answer: "Tram-track lines, ring shadows, cystic spaces with air-fluid levels, and volume loss; the film may be normal in early disease." },
+              { id: 1723, question: "What pulmonary function pattern is seen?", answer: "Obstructive pattern (reduced FEV1/FVC), with a restrictive component in advanced disease." },
+              { id: 1724, question: "What investigations are used to identify the cause of bronchiectasis?", answer: "Sweat chloride test, immunoglobulin levels with vaccine antibody titers, HIV testing, nasal nitric oxide and ciliary biopsy for primary ciliary dyskinesia, Aspergillus IgE and skin testing, and tuberculosis testing." },
+              { id: 1725, question: "Which investigation is used to exclude a retained foreign body or bronchial obstruction?", answer: "Flexible or rigid bronchoscopy." },
+              { id: 1726, question: "What is the role of sputum culture?", answer: "Identifies the organism and its sensitivity to guide antibiotic therapy." },
+              { id: 1727, question: "What are the principles of management of bronchiectasis?", answer: "Treat the underlying cause, optimize airway clearance, treat infections promptly, maintain nutrition, vaccinate, and prevent progression." },
+              { id: 1728, question: "What is the cornerstone of treatment in bronchiectasis?", answer: "Airway clearance with chest physiotherapy (postural drainage, positive expiratory pressure devices, and exercise)." },
+              { id: 1729, question: "What is the first-line oral antibiotic for an exacerbation due to Haemophilus influenzae?", answer: "Amoxicillin-clavulanate for 10–14 days." },
+              { id: 1730, question: "How are exacerbations due to Pseudomonas aeruginosa treated?", answer: "IV anti-pseudomonal antibiotics (e.g., ceftazidime plus an aminoglycoside); inhaled antibiotics may be used for chronic infection." },
+              { id: 1731, question: "What is the role of long-term macrolide therapy?", answer: "Azithromycin reduces the frequency of exacerbations in children with recurrent exacerbations." },
+              { id: 1732, question: "What is the role of hypertonic saline and bronchodilators?", answer: "Hypertonic saline aids sputum clearance; bronchodilators are used when there is reversible airflow obstruction." },
+              { id: 1733, question: "Is dornase alfa recommended in non-CF bronchiectasis?", answer: "No, it has not shown benefit and may be harmful." },
+              { id: 1734, question: "What is the role of immunoglobulin replacement?", answer: "Indicated for bronchiectasis due to antibody deficiency." },
+              { id: 1735, question: "What are the preventive measures?", answer: "Pneumococcal, influenza, Hib, pertussis, and measles vaccination; avoid tobacco smoke; and good nutrition." },
+              { id: 1736, question: "What are the indications for surgery?", answer: "Localized disease refractory to medical therapy, or recurrent severe hemoptysis (lobectomy or segmentectomy)." },
+              { id: 1737, question: "How is massive hemoptysis managed?", answer: "Bronchial artery embolization." },
+              { id: 1738, question: "What is the role of lung transplantation?", answer: "End-stage respiratory failure from progressive diffuse bronchiectasis." },
+              { id: 1739, question: "What are the complications of bronchiectasis?", answer: "Recurrent pneumonia, massive hemoptysis, empyema, lung abscess, pneumothorax, respiratory failure, pulmonary hypertension, and cor pulmonale." },
+              { id: 1740, question: "What are the extrapulmonary complications of bronchiectasis?", answer: "Failure to thrive, clubbing, brain abscess (hematogenous spread), and amyloidosis (rare)." },
+              { id: 1741, question: "Is bronchiectasis reversible in children?", answer: "Early disease may be partially reversible with prompt treatment; established disease is irreversible but can be stabilized." },
+              { id: 1742, question: "What factors predict a poor prognosis?", answer: "Pseudomonas colonization, frequent exacerbations, diffuse cystic disease, and reduced lung function at diagnosis." }
+            ]
+          }
+        ]
+      }
+    ]
+  };
+
+  /* ============================================================
+     2. APPLICATION STATE
+     ============================================================ */
+  /* Storage wrapper: uses localStorage when the viewer allows it; otherwise falls
+     back to window.name (survives reloads within the same tab). If neither
+     persists across sessions a notice is shown in the footer. */
+  const store = (function(){
+    let ls = null;
+    try{
+      const k = "__hl_test__";
+      window.localStorage.setItem(k, "1");
+      window.localStorage.removeItem(k);
+      ls = window.localStorage;
+    }catch(e){ ls = null; }
+    function readName(){
+      try{ const o = JSON.parse(window.name); return (o && o.__hl) ? o.__hl : {}; }
+      catch(e){ return {}; }
+    }
+    function writeName(obj){
+      try{ window.name = JSON.stringify({ __hl: obj }); }catch(e){}
+    }
+    return {
+      persistent: !!ls,
+      get(key){
+        if(ls){ try{ return ls.getItem(key); }catch(e){} }
+        const v = readName()[key];
+        return v === undefined ? null : v;
+      },
+      set(key, val){
+        if(ls){ try{ ls.setItem(key, val); return; }catch(e){} }
+        const o = readName(); o[key] = val; writeName(o);
+      }
+    };
+  })();
+
+  const STORAGE_KEY = "highlighter_progress_v1";
+  const THEME_KEY = "highlighter_theme_v1";
+
+  let progress = loadProgress();
+
+  const state = {
+    view: "home",
+    topicId: null,
+    subtopicId: null,
+    cardIndex: 0,
+    answerShown: false,
+    studyOrigin: "topic" // "topic" | "history" — where Back/Back-to-topics should return to
+  };
+
+  function loadProgress(){
+    try{
+      const raw = store.get(STORAGE_KEY);
+      if(raw) return JSON.parse(raw);
+    }catch(e){ /* corrupted or unavailable storage — start fresh */ }
+    return { cards: {} }; // cards[cardId] = "known" | "review"
+  }
+
+  function saveProgress(){
+    try{ store.set(STORAGE_KEY, JSON.stringify(progress)); }
+    catch(e){ /* storage unavailable — progress stays in-memory only */ }
+  }
+
+  /* ============================================================
+     3. DATA HELPERS
+     ============================================================ */
+  function getTopic(topicId){ return DATA.topics.find(t => t.id === topicId); }
+  function getSubtopic(topicId, subId){ return getTopic(topicId).subtopics.find(s => s.id === subId); }
+  function allCardsOfTopic(topic){ return topic.subtopics.reduce((acc, s) => acc.concat(s.cards), []); }
+  function allCards(){ return DATA.topics.reduce((acc, t) => acc.concat(allCardsOfTopic(t)), []); }
+
+  function cardStatus(cardId){ return progress.cards[cardId] || null; }
+
+  // Last-viewed card per subtopic, so a learner who leaves mid-way resumes there.
+  function getSavedPos(subId, total){
+    const p = progress.pos && progress.pos[subId];
+    return (Number.isInteger(p) && p > 0 && p < total) ? p : 0;
+  }
+  function savePos(subId, index){
+    if(!progress.pos) progress.pos = {};
+    if(index > 0) progress.pos[subId] = index; else delete progress.pos[subId];
+    saveProgress();
+  }
+
+  function subtopicStats(sub){
+    const total = sub.cards.length;
+    const seen = sub.cards.filter(c => cardStatus(c.id)).length;
+    const known = sub.cards.filter(c => cardStatus(c.id) === "known").length;
+    return { total, seen, known, pct: total ? Math.round((seen/total)*100) : 0 };
+  }
+
+  function topicStats(topic){
+    const cards = allCardsOfTopic(topic);
+    const total = cards.length;
+    const seen = cards.filter(c => cardStatus(c.id)).length;
+    const known = cards.filter(c => cardStatus(c.id) === "known").length;
+    return { total, seen, known, pct: total ? Math.round((seen/total)*100) : 0, complete: total > 0 && seen === total };
+  }
+
+  function overallStats(){
+    const cards = allCards();
+    const total = cards.length;
+    const reviewed = cards.filter(c => cardStatus(c.id)).length;
+    const needReview = cards.filter(c => cardStatus(c.id) === "review").length;
+    const topicsDone = DATA.topics.filter(t => topicStats(t).complete).length;
+    return {
+      total, reviewed, needReview, topicsDone,
+      pct: total ? Math.round((reviewed/total)*100) : 0
+    };
+  }
+
+  /* ============================================================
+     4. VIEW / NAVIGATION
+     ============================================================ */
+  const views = {
+    home: document.getElementById("view-home"),
+    topic: document.getElementById("view-topic"),
+    study: document.getElementById("view-study"),
+    history: document.getElementById("view-history"),
+    complete: document.getElementById("view-complete")
+  };
+
+  function showView(name){
+    Object.values(views).forEach(v => v.classList.remove("active"));
+    views[name].classList.add("active");
+    state.view = name;
+    window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+  }
+
+  function goHome(){
+    renderHome();
+    showView("home");
+  }
+
+  function goTopic(topicId){
+    state.topicId = topicId;
+    renderTopic(topicId);
+    showView("topic");
+  }
+
+  function goStudy(topicId, subId, resumeIndex, origin){
+    state.topicId = topicId;
+    state.subtopicId = subId;
+    const sub = getSubtopic(topicId, subId);
+    state.cardIndex = (resumeIndex === undefined || resumeIndex === null)
+      ? getSavedPos(subId, sub.cards.length)
+      : resumeIndex;
+    state.answerShown = false;
+    state.studyOrigin = origin || "topic";
+    renderStudy();
+    showView("study");
+  }
+
+  function goHistory(){
+    renderHistory();
+    showView("history");
+  }
+
+  // Returns to wherever the current study session was opened from.
+  function goBackFromStudy(){
+    if(state.studyOrigin === "history"){ goHistory(); }
+    else{ goTopic(state.topicId); }
+  }
+
+  /* ============================================================
+     5. RENDER: HOME
+     ============================================================ */
+  function renderHome(){
+    const o = overallStats();
+    document.getElementById("overallPct").textContent = o.pct + "%";
+    document.getElementById("overallBar").style.width = o.pct + "%";
+    document.getElementById("statTopicsDone").textContent = o.topicsDone;
+    document.getElementById("statReviewed").textContent = o.reviewed;
+    document.getElementById("statNeedReview").textContent = o.needReview;
+
+    const grid = document.getElementById("topicGrid");
+    grid.innerHTML = "";
+    DATA.topics.forEach(topic => {
+      const stats = topicStats(topic);
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "topic-card";
+      card.setAttribute("aria-label", topic.name + ", " + stats.total + " flashcards, " + stats.pct + "% complete");
+      card.innerHTML = `
+        <div class="topic-name">${escapeHtml(topic.name)}</div>
+        <div class="topic-meta">
+          <span>${stats.total} cards</span>
+          <span class="meta-pct">${stats.pct}%</span>
+          ${stats.complete ? '<span class="meta-done">Completed</span>' : ""}
+        </div>
+        <div class="mini-track"><div class="mini-fill" style="width:${stats.pct}%"></div></div>
+      `;
+      card.addEventListener("click", () => goTopic(topic.id));
+      grid.appendChild(card);
+    });
+  }
+
+  /* ============================================================
+     6. RENDER: TOPIC (subtopics)
+     ============================================================ */
+  function renderTopic(topicId){
+    const topic = getTopic(topicId);
+    const tStats = topicStats(topic);
+    document.getElementById("topicTitle").textContent = topic.name;
+    document.getElementById("topicSub").textContent = tStats.total + " flashcards across " + topic.subtopics.length + " subtopics.";
+
+    const list = document.getElementById("subList");
+    list.innerHTML = "";
+    topic.subtopics.forEach(sub => {
+      const stats = subtopicStats(sub);
+      const isEmpty = sub.cards.length === 0;
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "sub-card";
+      if(isEmpty){ row.disabled = true; row.style.opacity = ".55"; row.style.cursor = "default"; }
+      row.setAttribute("aria-label", sub.name + ", " + (isEmpty ? "coming soon" : sub.cards.length + " cards, " + stats.pct + "% complete"));
+      row.innerHTML = `
+        <div class="sub-card-name">${escapeHtml(sub.name)}</div>
+        <div class="topic-meta">
+          ${isEmpty
+            ? '<span>Coming soon</span>'
+            : `<span>${sub.cards.length} cards</span><span class="meta-pct">${stats.pct}%</span>${getSavedPos(sub.id, sub.cards.length) ? '<span class="meta-done">Resume at card ' + (getSavedPos(sub.id, sub.cards.length)+1) + '</span>' : ''}`}
+        </div>
+        ${isEmpty ? "" : '<div class="mini-track"><div class="mini-fill" style="width:'+stats.pct+'%"></div></div>'}
+      `;
+      if(!isEmpty){ row.addEventListener("click", () => goStudy(topicId, sub.id, undefined, "topic")); }
+      list.appendChild(row);
+    });
+  }
+
+  document.getElementById("backToHome").addEventListener("click", goHome);
+  document.getElementById("backToTopic").addEventListener("click", goBackFromStudy);
+  document.getElementById("viewHistoryBtn").addEventListener("click", goHistory);
+  document.getElementById("backToHomeFromHistory").addEventListener("click", goHome);
+
+  /* ============================================================
+     7. RENDER: STUDY (flashcards)
+     ============================================================ */
+  function currentSub(){ return getSubtopic(state.topicId, state.subtopicId); }
+  function currentCard(){ return currentSub().cards[state.cardIndex]; }
+
+  function renderStudy(){
+    const sub = currentSub();
+    document.getElementById("studySubtitle").textContent = sub.name;
+    renderCardFace();
+  }
+
+  function renderCardFace(){
+    const sub = currentSub();
+    const card = currentCard();
+    const total = sub.cards.length;
+
+    savePos(state.subtopicId, state.cardIndex);
+    document.getElementById("cardCounter").textContent = "Card " + (state.cardIndex+1) + " of " + total;
+    document.getElementById("studyBar").style.width = Math.round(((state.cardIndex+1)/total)*100) + "%";
+    document.getElementById("questionText").textContent = card.question;
+    document.getElementById("answerText").textContent = card.answer;
+
+    const answerBlock = document.getElementById("answerBlock");
+    const showBtn = document.getElementById("showAnswerBtn");
+    const judgeRow = document.getElementById("judgeRow");
+    const navRow = document.getElementById("navRow");
+
+    state.answerShown = false;
+    answerBlock.classList.remove("shown");
+    showBtn.style.display = "flex";
+    judgeRow.style.display = "none";
+    navRow.style.display = "none";
+
+    // re-trigger card entrance animation
+    const flashcard = document.getElementById("flashcard");
+    flashcard.style.animation = "none";
+    void flashcard.offsetWidth;
+    flashcard.style.animation = "";
+
+    updateJudgeButtonStates();
+    updateNavButtonStates();
+  }
+
+  function updateJudgeButtonStates(){
+    const status = cardStatus(currentCard().id);
+    document.getElementById("markKnownBtn").classList.toggle("active", status === "known");
+    document.getElementById("markReviewBtn").classList.toggle("active", status === "review");
+  }
+
+  function updateNavButtonStates(){
+    const sub = currentSub();
+    const prevBtn = document.getElementById("prevBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    prevBtn.disabled = state.cardIndex === 0;
+    prevBtn.classList.toggle("btn-disabled", state.cardIndex === 0);
+    nextBtn.textContent = (state.cardIndex === sub.cards.length - 1) ? "Finish" : "Next";
+  }
+
+  document.getElementById("showAnswerBtn").addEventListener("click", () => {
+    state.answerShown = true;
+    document.getElementById("answerBlock").classList.add("shown");
+    document.getElementById("showAnswerBtn").style.display = "none";
+    document.getElementById("judgeRow").style.display = "grid";
+    document.getElementById("navRow").style.display = "grid";
+  });
+
+  function markCard(status){
+    const card = currentCard();
+    const prior = cardStatus(card.id);
+    progress.cards[card.id] = (prior === status) ? null : status; // toggle off if tapped again
+    if(progress.cards[card.id] === null) delete progress.cards[card.id];
+    saveProgress();
+    updateJudgeButtonStates();
+  }
+
+  document.getElementById("markKnownBtn").addEventListener("click", () => markCard("known"));
+  document.getElementById("markReviewBtn").addEventListener("click", () => markCard("review"));
+
+  document.getElementById("prevBtn").addEventListener("click", () => {
+    if(state.cardIndex > 0){
+      state.cardIndex -= 1;
+      renderCardFace();
+    }
+  });
+
+  document.getElementById("nextBtn").addEventListener("click", () => {
+    const sub = currentSub();
+    if(state.cardIndex < sub.cards.length - 1){
+      state.cardIndex += 1;
+      renderCardFace();
+    } else {
+      savePos(state.subtopicId, 0);
+      renderComplete();
+      showView("complete");
+    }
+  });
+
+  // keyboard support during study
+  document.addEventListener("keydown", (e) => {
+    if(state.view !== "study") return;
+    if(e.key === " " || e.key === "Enter"){
+      if(!state.answerShown){
+        e.preventDefault();
+        document.getElementById("showAnswerBtn").click();
+      }
+    } else if(e.key === "ArrowRight" && state.answerShown){
+      document.getElementById("nextBtn").click();
+    } else if(e.key === "ArrowLeft" && state.answerShown){
+      document.getElementById("prevBtn").click();
+    }
+  });
+
+  /* ============================================================
+     8. RENDER: COMPLETION SCREEN
+     ============================================================ */
+  function renderComplete(){
+    const sub = currentSub();
+    const known = sub.cards.filter(c => cardStatus(c.id) === "known").length;
+    const review = sub.cards.filter(c => cardStatus(c.id) === "review").length;
+    const reviewed = sub.cards.filter(c => cardStatus(c.id)).length;
+    const pct = Math.round((reviewed / sub.cards.length) * 100);
+
+    document.getElementById("completeSub").textContent = "You finished “" + sub.name + "”.";
+    document.getElementById("cReviewed").textContent = reviewed;
+    document.getElementById("cKnown").textContent = known;
+    document.getElementById("cReview").textContent = review;
+    document.getElementById("completePct").style.width = pct + "%";
+    document.getElementById("backToTopicsBtn").textContent =
+      state.studyOrigin === "history" ? "Back to History" : "Back to Topics";
+  }
+
+  document.getElementById("reviewAgainBtn").addEventListener("click", () => {
+    goStudy(state.topicId, state.subtopicId, 0, state.studyOrigin);
+  });
+  document.getElementById("backToTopicsBtn").addEventListener("click", goBackFromStudy);
+
+  /* ============================================================
+     8b. RENDER: HISTORY (cards needing review)
+     ============================================================ */
+  function renderHistory(){
+    const list = document.getElementById("historyList");
+    list.innerHTML = "";
+
+    const items = [];
+    DATA.topics.forEach(topic => {
+      topic.subtopics.forEach(sub => {
+        sub.cards.forEach((card, idx) => {
+          if(cardStatus(card.id) === "review"){
+            items.push({ topic, sub, card, idx });
+          }
+        });
+      });
+    });
+
+    document.getElementById("historySub").textContent = items.length
+      ? items.length + " card" + (items.length === 1 ? "" : "s") + " marked as needing review."
+      : "No cards are currently marked as needing review.";
+
+    if(items.length === 0){
+      list.innerHTML = '<div class="history-empty">You have no cards marked as needing review — nice work. Mark a card "Needs Review" while studying to have it show up here.</div>';
+      return;
+    }
+
+    items.forEach(item => {
+      const el = document.createElement("button");
+      el.type = "button";
+      el.className = "history-item";
+      el.setAttribute("aria-label", "Review: " + item.card.question);
+      el.innerHTML = `
+        <span class="hist-path">${escapeHtml(item.topic.name)} › ${escapeHtml(item.sub.name)}</span>
+        <span class="hist-q">${escapeHtml(item.card.question)}</span>
+      `;
+      el.addEventListener("click", () => goStudy(item.topic.id, item.sub.id, item.idx, "history"));
+      list.appendChild(el);
+    });
+  }
+
+  /* ============================================================
+     9. SEARCH
+     ============================================================ */
+  const searchInput = document.getElementById("searchInput");
+  const searchResults = document.getElementById("searchResults");
+
+  searchInput.addEventListener("input", () => {
+    const q = searchInput.value.trim().toLowerCase();
+    searchResults.innerHTML = "";
+    if(q.length < 2){ return; }
+
+    const hits = [];
+    DATA.topics.forEach(topic => {
+      if(topic.name.toLowerCase().includes(q)){
+        hits.push({ label: topic.name, path: "Topic", action: () => goTopic(topic.id) });
+      }
+      topic.subtopics.forEach(sub => {
+        if(sub.cards.length === 0) return; // nothing to study yet
+        if(sub.name.toLowerCase().includes(q)){
+          hits.push({ label: sub.name, path: topic.name, action: () => goStudy(topic.id, sub.id) });
+        }
+        sub.cards.forEach((card, idx) => {
+          if(card.question.toLowerCase().includes(q) || card.answer.toLowerCase().includes(q)){
+            hits.push({
+              label: card.question,
+              path: topic.name + " › " + sub.name,
+              action: () => goStudy(topic.id, sub.id, idx)
+            });
+          }
+        });
+      });
+    });
+
+    if(hits.length === 0){
+      searchResults.innerHTML = '<div class="search-empty">No matches found.</div>';
+      return;
+    }
+
+    hits.slice(0, 8).forEach(hit => {
+      const el = document.createElement("button");
+      el.type = "button";
+      el.className = "search-hit";
+      el.innerHTML = `<span class="hit-path">${escapeHtml(hit.path)}</span><span class="hit-main">${escapeHtml(hit.label)}</span>`;
+      el.addEventListener("click", () => {
+        hit.action();
+        searchInput.value = "";
+        searchResults.innerHTML = "";
+      });
+      searchResults.appendChild(el);
+    });
+  });
+
+  /* ============================================================
+     10. THEME MANAGEMENT
+     ============================================================ */
+  function applyTheme(theme){
+    document.documentElement.setAttribute("data-theme", theme);
+    const icon = document.getElementById("themeIcon");
+    icon.innerHTML = theme === "dark"
+      ? '<circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="1.6"/><path d="M12 2.5V5M12 19V21.5M4.2 4.2L6 6M18 18L19.8 19.8M2.5 12H5M19 12H21.5M4.2 19.8L6 18M18 6L19.8 4.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'
+      : '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>';
+  }
+
+  function loadTheme(){
+    try{ return store.get(THEME_KEY) || "light"; }
+    catch(e){ return "light"; }
+  }
+
+  function saveTheme(theme){
+    try{ store.set(THEME_KEY, theme); }
+    catch(e){ /* unavailable */ }
+  }
+
+  let currentTheme = loadTheme();
+  applyTheme(currentTheme);
+
+  document.getElementById("themeToggle").addEventListener("click", () => {
+    currentTheme = currentTheme === "dark" ? "light" : "dark";
+    applyTheme(currentTheme);
+    saveTheme(currentTheme);
+  });
+
+  /* ============================================================
+     11. UTILITIES
+     ============================================================ */
+  function escapeHtml(str){
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  /* ============================================================
+     12. INIT
+     ============================================================ */
+  if(!store.persistent){ document.getElementById("storageNote").style.display = "block"; }
+  renderHome();
+  showView("home");
+
+})();
+</script>
+
+</body>
+</html>
